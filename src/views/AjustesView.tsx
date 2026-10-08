@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Bot, Cloud, Database, Eye, EyeOff, Info, KeyRound, LogIn, LogOut, Palette, RotateCcw, Upload, User } from 'lucide-react'
+import { Bot, Cloud, Database, Download, Eye, EyeOff, Info, KeyRound, LogIn, LogOut, Palette, RefreshCw, RotateCcw, Upload, User } from 'lucide-react'
 import { APP } from '@/data/app'
 import { leer, guardar, descargarRespaldo, importarRespaldo, contarClaves } from '@/core/storage/almacenamiento'
 import { respaldarNube, restaurarNube } from '@/core/sync/sync'
@@ -9,7 +9,8 @@ import { useAuth } from '@/core/auth/useAuth'
 import { useToast } from '@/components/ui/Toast'
 import { Boton } from '@/components/ui/Boton'
 import { firebaseConfigurado } from '@/services/firebase'
-import { plataformaActual, vibrar } from '@/core/natives/plataforma'
+import { plataformaActual, vibrar, abrirURL } from '@/core/natives/plataforma'
+import { buscarUltimaVersion, esMasNueva, type InfoActualizacion } from '@/core/actualizacion/actualizacion'
 import { AJUSTES_POR_DEFECTO, type Ajustes, type Tema } from '@/types'
 
 // ═══════════════════════════════════════════════════════════
@@ -28,6 +29,11 @@ export function AjustesView() {
   const [probandoIA, setProbandoIA] = useState(false)
   const [sincronizando, setSincronizando] = useState(false)
   const inputArchivo = useRef<HTMLInputElement>(null)
+
+  // 🔄 Actualizador (FASE 2)
+  const [buscandoUpdate, setBuscandoUpdate] = useState(false)
+  const [nuevaDisponible, setNuevaDisponible] = useState<InfoActualizacion | null>(null)
+  const [estadoUpdate, setEstadoUpdate] = useState<'al-dia' | 'error' | ''>('')
 
   function actualizar(parcial: Partial<Ajustes>) {
     const nuevos = { ...ajustes, ...parcial }
@@ -104,6 +110,34 @@ export function AjustesView() {
     } finally {
       setSincronizando(false)
     }
+  }
+
+  async function buscarActualizaciones() {
+    vibrar()
+    setBuscandoUpdate(true)
+    setNuevaDisponible(null)
+    setEstadoUpdate('')
+    try {
+      const info = await buscarUltimaVersion()
+      if (!info) {
+        setEstadoUpdate('error')
+        return
+      }
+      if (esMasNueva(info)) {
+        setNuevaDisponible(info)
+      } else {
+        setEstadoUpdate('al-dia')
+      }
+    } finally {
+      setBuscandoUpdate(false)
+    }
+  }
+
+  async function descargarActualizacion() {
+    if (!nuevaDisponible) return
+    vibrar()
+    const ok = await abrirURL(nuevaDisponible.urlApk)
+    if (!ok) mostrar('No se pudo abrir el enlace de descarga', 'info')
   }
 
   const Temas: Array<{ id: Tema; etiqueta: string }> = [
@@ -257,6 +291,41 @@ export function AjustesView() {
           </Boton>
         ) : (
           <p className="text-sm text-neutral-500 dark:text-neutral-400">Sin Firebase configurado no hay cuentas — modo 100% local.</p>
+        )}
+      </section>
+
+      {/* ── Actualización (FASE 2) ───────────────────── */}
+      <section className="rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+        <h2 className="mb-2 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-neutral-400">
+          <RefreshCw className="h-4 w-4" /> Actualización
+        </h2>
+        <p className="mb-3 text-xs text-neutral-500 dark:text-neutral-400">
+          Instalada: v{APP.version} — las APKs nuevas se publican en GitHub Releases y se instalan encima sin perder datos.
+        </p>
+        <Boton
+          className="w-full"
+          icono={<RefreshCw className="h-4 w-4" />}
+          onClick={buscarActualizaciones}
+          cargando={buscandoUpdate}
+        >
+          Buscar actualizaciones
+        </Boton>
+        {estadoUpdate === 'al-dia' && (
+          <p className="mt-2 text-center text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+            ✅ Ya tenés la última versión
+          </p>
+        )}
+        {estadoUpdate === 'error' && (
+          <p className="mt-2 text-center text-xs font-semibold text-red-500">No se pudo verificar — revisá tu conexión</p>
+        )}
+        {nuevaDisponible && (
+          <Boton
+            className="mt-2 w-full"
+            icono={<Download className="h-4 w-4" />}
+            onClick={descargarActualizacion}
+          >
+            Descargar v{nuevaDisponible.version}
+          </Boton>
         )}
       </section>
 

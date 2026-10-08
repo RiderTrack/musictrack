@@ -1,4 +1,5 @@
-import { Bell, Cpu, Database, Download, ListMusic, Music4, Smartphone, User, Wand2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Bell, Cpu, Database, Download, ListMusic, Music4, Smartphone, User, Wand2, X } from 'lucide-react'
 import { APP } from '@/data/app'
 import { KPI } from '@/components/ui/KPI'
 import { Boton } from '@/components/ui/Boton'
@@ -7,7 +8,14 @@ import { useAuth } from '@/core/auth/useAuth'
 import { firebaseConfigurado } from '@/services/firebase'
 import { contarClaves, descargarRespaldo, leer } from '@/core/storage/almacenamiento'
 import { notificar } from '@/core/notificaciones/notificaciones'
-import { plataformaActual, vibrar } from '@/core/natives/plataforma'
+import { plataformaActual, vibrar, abrirURL } from '@/core/natives/plataforma'
+import {
+  buscarUltimaVersion,
+  esMasNueva,
+  ignorarVersion,
+  versionIgnorada,
+  type InfoActualizacion,
+} from '@/core/actualizacion/actualizacion'
 import { AJUSTES_POR_DEFECTO, type Ajustes, type Letra, type PestannaId } from '@/types'
 
 // ═══════════════════════════════════════════════════════════
@@ -23,6 +31,30 @@ export function DashboardView({ irA }: { irA: (p: PestannaId) => void }) {
 
   const hora = new Date().getHours()
   const saludo = hora < 12 ? 'Buenos días' : hora < 19 ? 'Buenas tardes' : 'Buenas noches'
+
+  // 🔄 Actualizador (FASE 2): chequeo silencioso al abrir Inicio.
+  const [actualizacion, setActualizacion] = useState<InfoActualizacion | null>(null)
+
+  useEffect(() => {
+    let vivo = true
+    buscarUltimaVersion().then((info) => {
+      if (vivo && info && esMasNueva(info) && versionIgnorada() !== info.tag) setActualizacion(info)
+    })
+    return () => {
+      vivo = false
+    }
+  }, [])
+
+  function posponerActualizacion() {
+    if (actualizacion) ignorarVersion(actualizacion.tag)
+    setActualizacion(null)
+  }
+
+  async function descargarActualizacion(url: string) {
+    vibrar()
+    const ok = await abrirURL(url)
+    if (!ok) mostrar('No se pudo abrir el enlace de descarga', 'info')
+  }
 
   async function probarNotificacion() {
     vibrar()
@@ -47,6 +79,42 @@ export function DashboardView({ irA }: { irA: (p: PestannaId) => void }) {
           {new Date().toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long' })}
         </p>
       </section>
+
+      {/* Banner de nueva versión (FASE 2) */}
+      {actualizacion && (
+        <section
+          className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4"
+          role="status"
+          aria-label="Nueva versión disponible"
+        >
+          <div className="flex items-center gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+              <Download className="h-4 w-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">Nueva versión disponible 🎉</p>
+              <p className="text-xs text-emerald-700/80 dark:text-emerald-300/80">
+                v{actualizacion.version} — descargala e instalala encima: tus letras no se pierden.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={posponerActualizacion}
+              aria-label="Posponer esta versión"
+              className="rounded-lg p-1.5 text-emerald-600/70 hover:bg-emerald-500/10 dark:text-emerald-400/70"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <Boton
+            className="mt-3 w-full"
+            icono={<Download className="h-4 w-4" />}
+            onClick={() => descargarActualizacion(actualizacion.urlApk)}
+          >
+            Descargar v{actualizacion.version}
+          </Boton>
+        </section>
+      )}
 
       {/* Estado del sistema */}
       <section className="grid grid-cols-2 gap-3" aria-label="Estado del sistema">

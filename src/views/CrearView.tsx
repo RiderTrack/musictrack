@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { RefreshCw, Save, Share2, Sparkles, Wand2 } from 'lucide-react'
+import { PenLine, RefreshCw, Save, Share2, Sparkles, Wand2 } from 'lucide-react'
 import { leer, guardar } from '@/core/storage/almacenamiento'
 import { preguntarIA } from '@/core/ai/claude'
 import { Boton } from '@/components/ui/Boton'
@@ -19,10 +19,11 @@ import {
 } from '@/types'
 
 // ═══════════════════════════════════════════════════════════
-// ✍️ CREAR — generador de letras con IA (FASE 1 de MusicTrack).
-// Patrón BYO-token de la familia Track: tema + género + idioma +
-// mood + estructura → Claude escribe la letra con secciones
-// etiquetadas. Desde acá se guarda en la biblioteca (Letras).
+// ✍️ CREAR — dos modos (FASE 2):
+//   • Con IA: tema + género + idioma + mood + estructura →
+//     Claude escribe la letra (patrón BYO-token Track).
+//   • Escribir la mía: título + pegá/escribí tu composición
+//     externa y guardala en la biblioteca (origen 'propia').
 // ═══════════════════════════════════════════════════════════
 
 const CLAVE_LETRAS = 'letras'
@@ -49,6 +50,13 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
   const [cargando, setCargando] = useState(false)
   const [guardada, setGuardada] = useState(false)
 
+  // Modo Escribir la mía (FASE 2)
+  const [tituloPropio, setTituloPropio] = useState('')
+  const [generoPropio, setGeneroPropio] = useState<string>(GENEROS_MUSICALES[0])
+  const [idiomaPropio, setIdiomaPropio] = useState<string>(IDIOMAS[0])
+  const [textoPropio, setTextoPropio] = useState('')
+  const [modo, setModo] = useState<'ia' | 'propia'>('ia')
+
   function interpretar(textoIA: string): Letra {
     const coincidencia = textoIA.match(/^TITULO\s*:\s*(.+)$/im)
     const cuerpo = textoIA.replace(/^TITULO\s*:\s*.+$/im, '').trim()
@@ -72,6 +80,34 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
       origen: 'ia',
       fecha: Date.now(),
     }
+  }
+
+  /** FASE 2: guarda una composición propia (escrita o pegada) en la biblioteca. */
+  function guardarPropia() {
+    const titulo = tituloPropio.trim()
+    const texto = textoPropio.trim()
+    if (!titulo || !texto) {
+      mostrar('Poné un título y la letra de tu canción', 'info', 3200)
+      return
+    }
+    vibrar()
+    const nueva: Letra = {
+      id: `${Date.now()}`,
+      titulo,
+      tema: '',
+      genero: generoPropio,
+      idioma: idiomaPropio,
+      mood: '',
+      estructura: '',
+      texto,
+      origen: 'propia',
+      fecha: Date.now(),
+    }
+    guardar(CLAVE_LETRAS, [nueva, ...leer<Letra[]>(CLAVE_LETRAS, [])])
+    setTituloPropio('')
+    setTextoPropio('')
+    mostrar('¡Guardada en tu biblioteca! 🎵', 'ok')
+    irA('letras')
   }
 
   async function generar() {
@@ -134,22 +170,102 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
     if (!ok) mostrar('Compartir no disponible en esta plataforma', 'info')
   }
 
-  if (!ajustes.tokenIA) {
-    return (
-      <EmptyState
-        icono={<Sparkles className="h-7 w-7" />}
-        titulo="Falta tu token de Claude"
-        descripcion="El patrón de la familia Track: cada usuario trae su propia clave (BYO token). Ponela en Ajustes y volvé a crear tu primera letra."
-        accion={<Boton onClick={() => irA('ajustes')}>Ir a Ajustes</Boton>}
-      />
-    )
-  }
-
   const claseInput =
     'h-11 w-full rounded-xl border border-neutral-300 bg-transparent px-3 text-sm outline-none transition-colors focus:border-acento dark:border-neutral-700'
 
   return (
     <div className="space-y-4">
+      {/* Selector de modo (FASE 2) */}
+      <div
+        role="tablist"
+        aria-label="Modo de creación"
+        className="grid grid-cols-2 gap-1 rounded-2xl border border-neutral-200 bg-neutral-100 p-1 dark:border-neutral-800 dark:bg-neutral-950"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={modo === 'ia'}
+          onClick={() => setModo('ia')}
+          className={`flex h-10 items-center justify-center gap-2 rounded-xl text-sm font-semibold transition-colors ${
+            modo === 'ia'
+              ? 'bg-white text-acento shadow-sm dark:bg-neutral-800'
+              : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
+          }`}
+        >
+          <Sparkles className="h-4 w-4" /> Con IA
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={modo === 'propia'}
+          onClick={() => setModo('propia')}
+          className={`flex h-10 items-center justify-center gap-2 rounded-xl text-sm font-semibold transition-colors ${
+            modo === 'propia'
+              ? 'bg-white text-acento shadow-sm dark:bg-neutral-800'
+              : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
+          }`}
+        >
+          <PenLine className="h-4 w-4" /> Escribir la mía
+        </button>
+      </div>
+
+      {modo === 'propia' ? (
+        /* ── Composición propia: escribir o pegar de afuera (FASE 2) ── */
+        <section className="rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+          <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-neutral-400">Mi composición</h2>
+          <div className="space-y-3">
+            <input
+              value={tituloPropio}
+              onChange={(e) => setTituloPropio(e.target.value)}
+              placeholder="Título de la canción"
+              maxLength={80}
+              className={claseInput}
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">Género</span>
+                <select value={generoPropio} onChange={(e) => setGeneroPropio(e.target.value)} className={claseInput}>
+                  {GENEROS_MUSICALES.map((g) => (
+                    <option key={g} value={g}>
+                      {g}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">Idioma</span>
+                <select value={idiomaPropio} onChange={(e) => setIdiomaPropio(e.target.value)} className={claseInput}>
+                  {IDIOMAS.map((i) => (
+                    <option key={i} value={i}>
+                      {i}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <textarea
+              value={textoPropio}
+              onChange={(e) => setTextoPropio(e.target.value)}
+              placeholder={
+                'Pegá o escribí tu letra acá.\n\nPodés etiquetar las secciones entre corchetes:\n\n[Verso 1]\n…\n\n[Coro]\n…'
+              }
+              rows={12}
+              className="min-h-[220px] w-full resize-y rounded-xl border border-neutral-300 bg-transparent p-3 text-sm outline-none transition-colors placeholder:text-neutral-400 focus:border-acento dark:border-neutral-700"
+            />
+            <Boton className="w-full" icono={<Save className="h-4 w-4" />} onClick={guardarPropia}>
+              Guardar en mi biblioteca
+            </Boton>
+          </div>
+        </section>
+      ) : !ajustes.tokenIA ? (
+        <EmptyState
+          icono={<Sparkles className="h-7 w-7" />}
+          titulo="Falta tu token de Claude"
+          descripcion="El patrón de la familia Track: cada usuario trae su propia clave (BYO token). Ponela en Ajustes y volvé a crear tu primera letra. (Para escribir una letra propia no necesitás token: usá «Escribir la mía».)"
+          accion={<Boton onClick={() => irA('ajustes')}>Ir a Ajustes</Boton>}
+        />
+      ) : (
+        <>
       {/* Formulario */}
       <section className="rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
         <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-neutral-400">Nueva letra</h2>
@@ -273,6 +389,8 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
             Compartir
           </Boton>
         </section>
+      )}
+        </>
       )}
     </div>
   )

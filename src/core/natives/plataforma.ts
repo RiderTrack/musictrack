@@ -4,6 +4,7 @@ import { Share } from '@capacitor/share'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 import { SplashScreen } from '@capacitor/splash-screen'
 import { StatusBar, Style } from '@capacitor/status-bar'
+import { Browser } from '@capacitor/browser'
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth'
 import { firebaseConfigurado } from '@/services/firebase'
 
@@ -54,6 +55,25 @@ export async function tomarFoto(calidad = 80): Promise<string | null> {
     return foto.dataUrl ?? null
   } catch {
     return null
+  }
+}
+
+/** Abre una URL externa (APK, página): Custom Tab en Android, pestaña nueva en web. */
+export async function abrirURL(url: string): Promise<boolean> {
+  try {
+    if (esNativo()) {
+      await Browser.open({ url, presentationStyle: 'fullscreen' })
+    } else {
+      window.open(url, '_blank', 'noopener')
+    }
+    return true
+  } catch {
+    try {
+      window.open(url, '_blank', 'noopener')
+      return true
+    } catch {
+      return false
+    }
   }
 }
 
