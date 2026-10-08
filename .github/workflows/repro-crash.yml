@@ -2,14 +2,19 @@ name: 🔍 Reproducir crash (diagnóstico)
 
 on:
   workflow_dispatch:
+    inputs:
+      apk_url:
+        description: 'URL del APK a probar'
+        required: true
+        default: 'https://github.com/RiderTrack/musictrack/releases/download/v0.1.0-fase1/MusicTrack-v0.1.0-fase1-debug.apk'
 
 jobs:
   repro:
-    runs-on: macos-latest
+    runs-on: macos-15
     steps:
-      - name: Descargar APK de la Release (el que crashea en los teléfonos)
+      - name: Descargar APK a probar
         run: |
-          curl -L -o app.apk "https://github.com/RiderTrack/musictrack/releases/download/v0.1.0-fase1/MusicTrack-v0.1.0-fase1-debug.apk"
+          curl -L -o app.apk "${{ github.event.inputs.apk_url }}"
           ls -lh app.apk
 
       - name: Boot emulador + instalar + abrir + capturar logcat
@@ -17,6 +22,7 @@ jobs:
         with:
           api-level: 34
           arch: arm64-v8a
+          emulator-boot-timeout: 900
           script: |
             adb devices
             adb install -r app.apk
@@ -24,13 +30,15 @@ jobs:
             adb shell am start -W -n com.ridertrack.musictrack/.MainActivity || echo "am start FALLÓ (exit $?)"
             sleep 20
             echo "=== ¿PROCESO VIVO? ==="
-            adb shell pidof com.ridertrack.musictrack || echo "PROCESO MUERTO = crasheó"
+            adb shell pidof com.ridertrack.musictrack && echo ">>> APP VIVA <<<" || echo ">>> PROCESO MUERTO = crasheó <<<"
             echo "=== LOGCAT ==="
             adb logcat -d > "$GITHUB_WORKSPACE/logcat.txt"
             echo "=== CRASHES EN LOG ==="
-            grep -E "FATAL|AndroidRuntime|CRASH" -A 40 "$GITHUB_WORKSPACE/logcat.txt" | head -120 || echo "sin FATAL en logcat"
+            grep -E "FATAL|AndroidRuntime|CRASH" -A 40 "$GITHUB_WORKSPACE/logcat.txt" | head -150 || echo "sin FATAL en logcat"
+            exit 0
 
       - name: Subir log completo
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: crash-logcat
