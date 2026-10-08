@@ -1,4 +1,4 @@
-import { Home, Layers, Settings, Sparkles } from 'lucide-react'
+import { Home, ListMusic, Settings, Wand2 } from 'lucide-react'
 import type { PestannaId } from '@/types'
 import { vibrar } from '@/core/natives/plataforma'
 
@@ -15,8 +15,8 @@ interface Props {
 
 const PESTANNAS: Array<{ id: PestannaId; etiqueta: string; icono: typeof Home }> = [
   { id: 'inicio', etiqueta: 'Inicio', icono: Home },
-  { id: 'modulo1', etiqueta: 'Módulo 1', icono: Layers },
-  { id: 'modulo2', etiqueta: 'Módulo 2', icono: Sparkles },
+  { id: 'letras', etiqueta: 'Letras', icono: ListMusic },
+  { id: 'crear', etiqueta: 'Crear', icono: Wand2 },
   { id: 'ajustes', etiqueta: 'Ajustes', icono: Settings },
 ]
 

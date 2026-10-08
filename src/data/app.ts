@@ -25,5 +25,5 @@ export const APP: IdentidadApp = {
   version: '1.0.0',
   prefijoClaves: 'musictrack',
   acento: '#a855f7',
-  descripcion: 'Esqueleto modular para apps de la familia Track — React 19 + Vite 6 + Tailwind 4 + Capacitor 6.',
+  descripcion: 'Creación de música con IA: generá letras con Claude, escribí las tuyas y musicalizá tus canciones.',
 }

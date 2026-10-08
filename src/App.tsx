@@ -5,8 +5,8 @@ import { ToastProvider } from '@/components/ui/Toast'
 import { Header } from '@/components/layout/Header'
 import { BottomNav } from '@/components/layout/BottomNav'
 import { DashboardView } from '@/views/DashboardView'
-import { Modulo1View } from '@/views/Modulo1View'
-import { Modulo2View } from '@/views/Modulo2View'
+import { LetrasView } from '@/views/LetrasView'
+import { CrearView } from '@/views/CrearView'
 import { AjustesView } from '@/views/AjustesView'
 import { arranqueNativo } from '@/core/natives/plataforma'
 import { pedirPermisoNotificaciones } from '@/core/notificaciones/notificaciones'
@@ -44,8 +44,8 @@ function Contenido() {
       <Header />
       <main className="mx-auto w-full max-w-2xl flex-1 px-4 pb-28 pt-5">
         {pestanna === 'inicio' && <DashboardView irA={setPestanna} />}
-        {pestanna === 'modulo1' && <Modulo1View />}
-        {pestanna === 'modulo2' && <Modulo2View irA={setPestanna} />}
+        {pestanna === 'letras' && <LetrasView irA={setPestanna} />}
+        {pestanna === 'crear' && <CrearView irA={setPestanna} />}
         {pestanna === 'ajustes' && <AjustesView />}
       </main>
       <BottomNav activa={pestanna} alCambiar={setPestanna} />
