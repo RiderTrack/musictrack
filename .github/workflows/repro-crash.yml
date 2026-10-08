@@ -1,0 +1,37 @@
+name: 🔍 Reproducir crash (diagnóstico)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  repro:
+    runs-on: macos-latest
+    steps:
+      - name: Descargar APK de la Release (el que crashea en los teléfonos)
+        run: |
+          curl -L -o app.apk "https://github.com/RiderTrack/musictrack/releases/download/v0.1.0-fase1/MusicTrack-v0.1.0-fase1-debug.apk"
+          ls -lh app.apk
+
+      - name: Boot emulador + instalar + abrir + capturar logcat
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          script: |
+            adb devices
+            adb install -r app.apk
+            echo "=== INSTALADO, ABRIENDO APP ==="
+            adb shell am start -W -n com.ridertrack.musictrack/.MainActivity || echo "am start FALLÓ (exit $?)"
+            sleep 20
+            echo "=== ¿PROCESO VIVO? ==="
+            adb shell pidof com.ridertrack.musictrack || echo "PROCESO MUERTO = crasheó"
+            echo "=== LOGCAT ==="
+            adb logcat -d > "$GITHUB_WORKSPACE/logcat.txt"
+            echo "=== CRASHES EN LOG ==="
+            grep -E "FATAL|AndroidRuntime|CRASH" -A 40 "$GITHUB_WORKSPACE/logcat.txt" | head -120 || echo "sin FATAL en logcat"
+
+      - name: Subir log completo
+        uses: actions/upload-artifact@v4
+        with:
+          name: crash-logcat
+          path: logcat.txt
