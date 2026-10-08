@@ -5,6 +5,7 @@ import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 import { SplashScreen } from '@capacitor/splash-screen'
 import { StatusBar, Style } from '@capacitor/status-bar'
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth'
+import { firebaseConfigurado } from '@/services/firebase'
 
 // ═══════════════════════════════════════════════════════════
 // 📱 CAPA NATIVA — Capacitor con guardas web: todo lo de acá
@@ -56,7 +57,7 @@ export async function tomarFoto(calidad = 80): Promise<string | null> {
   }
 }
 
-/** Arranque nativo: splash, status bar e init del login Google. Web-safe. */
+/** Arranque nativo: splash, status bar e init del login Google (solo con Firebase). Web-safe. */
 export async function arranqueNativo(): Promise<void> {
   try {
     await SplashScreen.hide()
@@ -69,7 +70,10 @@ export async function arranqueNativo(): Promise<void> {
     /* web */
   }
   try {
-    if (esNativo()) GoogleAuth.initialize()
+    // 🩹 FIX crash al abrir: sin scopes en capacitor.config el plugin crea
+    // new Scope("") y crashea la app al arrancar. Además, sin Firebase
+    // configurado no tiene sentido inicializar el login Google nativo.
+    if (esNativo() && firebaseConfigurado) GoogleAuth.initialize()
   } catch {
     /* sin google-services configurado */
   }

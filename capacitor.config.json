@@ -18,6 +18,10 @@
       "backgroundColor": "#0a0a0a",
       "androidSplashResourceName": "splash",
       "showSpinner": false
+    },
+    "GoogleAuth": {
+      "scopes": ["profile", "email"],
+      "forceCodeForRefreshToken": true
     }
   }
 }
