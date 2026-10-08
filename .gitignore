@@ -1,0 +1,11 @@
+node_modules
+dist
+server.js
+*.local
+.DS_Store
+release.keystore
+key.properties
+*.jks
+*.apk
+.vite
+android

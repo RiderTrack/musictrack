@@ -1,0 +1,203 @@
+name: Build TrackStack APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      # 🩹 FIX (2026-09-16): android-actions/setup-android se rompió porque
+      # Google ELIMINÓ el paquete legacy 'tools' de su repositorio.
+      # El runner ubuntu-latest YA trae el Android SDK completo preinstalado,
+      # así que usamos ese + instalación defensiva de lo que necesita
+      # Capacitor 6 (compileSdk 34).
+      - name: Setup Android SDK (preinstalado en el runner)
+        run: |
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager 2>/dev/null | head -1)"
+          fi
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          yes | "$SDKMANAGER" --install "platforms;android-34" "build-tools;34.0.0" "platform-tools" > /dev/null 2>&1 \
+            || echo "⚠️ sdkmanager install falló — confiando en componentes preinstalados"
+          echo "✅ Plataformas:" && ls "$ANDROID_HOME/platforms" 2>/dev/null || true
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build React App
+        run: npm run build
+
+      - name: Add Android platform
+        run: |
+          if [ ! -d android ]; then
+            npx cap add android
+          else
+            echo "ℹ️ android/ ya existe — saltando cap add"
+          fi
+
+      - name: Copy web assets to Android
+        run: npx cap copy android
+
+      - name: Sync Capacitor plugins
+        run: npx cap sync android
+
+      # 🎨 ÍCONOS OPCIONALES: si existe android-icons/ se copia ENCIMA del
+      # res/ generado (patrón PlantTrack). Si no, sale el ícono default de
+      # Capacitor — creá la carpeta cuando tengas tus PNGs.
+      - name: Apply launcher icon + splash (si existe android-icons/)
+        run: |
+          if [ -d android-icons ]; then
+            rm -rf android/app/src/main/res/drawable-port-hdpi \
+                   android/app/src/main/res/drawable-port-mdpi \
+                   android/app/src/main/res/drawable-port-xhdpi \
+                   android/app/src/main/res/drawable-port-xxhdpi \
+                   android/app/src/main/res/drawable-port-xxxhdpi \
+                   android/app/src/main/res/drawable-land-hdpi \
+                   android/app/src/main/res/drawable-land-mdpi \
+                   android/app/src/main/res/drawable-land-xhdpi \
+                   android/app/src/main/res/drawable-land-xxhdpi \
+                   android/app/src/main/res/drawable-land-xxxhdpi
+            rm -f android/app/src/main/res/drawable/ic_launcher_background.xml \
+                  android/app/src/main/res/drawable-v24/ic_launcher_foreground.xml
+            rmdir android/app/src/main/res/drawable-v24 2>/dev/null || true
+            cp -r android-icons/. android/app/src/main/res/
+            echo "✅ Ícono personalizado aplicado"
+          else
+            echo "⚠️ android-icons/ no existe — APK con ícono default de Capacitor"
+          fi
+
+      # 🏷️ Nombre visible + versión: versionCode automático por número de
+      # ejecución (siempre incremental) y versionName desde package.json.
+      - name: Configure app strings + version
+        run: |
+          mkdir -p android/app/src/main/res/values
+          echo '<?xml version="1.0" encoding="utf-8"?><resources><string name="app_name">TrackStack</string><string name="title_activity_main">TrackStack</string><string name="package_name">com.trackstack.app</string><string name="custom_url_scheme">com.trackstack.app</string></resources>' > android/app/src/main/res/values/strings.xml
+          VERSION=$(node -p "require('./package.json').version")
+          sed -i "s/versionCode 1$/versionCode ${{ github.run_number }}/; s/versionName \"1.0\"/versionName \"$VERSION\"/" android/app/build.gradle
+          echo "✅ versionName $VERSION / versionCode ${{ github.run_number }}"
+
+      # ☁️ FIREBASE (Google Auth + Firestore) — todo condicional:
+      # si no hay google-services.json (ni secret ni repo), la app sale
+      # en modo 100% local y este paso es un no-op.
+      - name: Setup Firebase (Google Auth + Firestore)
+        run: |
+          if [ -n "${{ secrets.GOOGLE_SERVICES_JSON }}" ]; then
+            echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 -d > google-services.json
+            echo "✅ google-services.json desde secret GOOGLE_SERVICES_JSON"
+          elif [ -f google-services.json ]; then
+            echo "ℹ️ google-services.json del repo"
+          else
+            echo "ℹ️ Sin Firebase — la app funciona en modo local (sin cuenta en la nube)"
+            exit 0
+          fi
+          cp google-services.json android/app/google-services.json
+          PROJECT_GRADLE="android/build.gradle"
+          if ! grep -q "com.google.gms.google-services" "$PROJECT_GRADLE"; then
+            sed -i '/buildscript {/a\    repositories { google() mavenCentral() }\n    dependencies { classpath "com.google.gms:google-services:4.4.2" }' "$PROJECT_GRADLE" || true
+          fi
+          APP_GRADLE="android/app/build.gradle"
+          if ! grep -q "com.google.gms.google-services" "$APP_GRADLE"; then
+            echo 'apply plugin: "com.google.gms.google-services"' >> "$APP_GRADLE"
+          fi
+          if ! grep -q "play-services-auth" "$APP_GRADLE"; then
+            sed -i '/dependencies {/a\    implementation "com.google.android.gms:play-services-auth:20.7.0"' "$APP_GRADLE"
+          fi
+          SERVER_CLIENT_ID=$(python3 -c "import json; d=json.load(open('google-services.json')); print(next((o['client_id'] for c in d.get('client',[]) for o in c.get('oauth_client',[]) if o.get('client_type')==3), ''))")
+          if [ -n "$SERVER_CLIENT_ID" ]; then
+            sed -i "s|</resources>|<string name=\"server_client_id\">$SERVER_CLIENT_ID</string></resources>|" android/app/src/main/res/values/strings.xml
+            echo "✅ server_client_id configurado: ${SERVER_CLIENT_ID:0:25}..."
+          else
+            echo "⚠️ oauth_client client_type 3 no encontrado — revisá el google-services.json"
+          fi
+
+      - name: Update AndroidManifest permissions
+        run: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />\n    <application|' "$MANIFEST"
+          echo "✅ Permisos en el manifest:" && grep -c "uses-permission" "$MANIFEST"
+
+      - name: Set Gradle permissions
+        run: chmod +x android/gradlew
+
+      - name: Build Release APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon
+
+      # 🔑 KEYSTORE: si existe el secret se usa (imprescindible para que el
+      # APK actualice sobre el instalado). Si no, se genera uno NUEVO cada
+      # build (solo para probar — las instalaciones no se actualizarán
+      # entre builds). Generá el definitivo con generate-keystore.yml.
+      - name: Restore or generate keystore
+        run: |
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            echo "✅ Usando keystore guardado en Secrets"
+            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > release.keystore
+          else
+            echo "⚠️ No hay KEYSTORE_BASE64 — generando keystore temporario"
+            keytool -genkeypair \
+              -keystore release.keystore \
+              -alias trackstack \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -storepass trackstack123 \
+              -keypass trackstack123 \
+              -dname "CN=TrackStack, OU=Dev, O=Track, L=Lima, S=Lima, C=PE"
+          fi
+
+      - name: Zipalign APK
+        run: |
+          ZIPALIGN=$(find $ANDROID_SDK_ROOT -name "zipalign" | head -1)
+          $ZIPALIGN -v -p 4 android/app/build/outputs/apk/release/app-release-unsigned.apk TrackStack-aligned.apk
+
+      - name: Sign APK
+        run: |
+          APKSIGNER=$(find $ANDROID_SDK_ROOT -name "apksigner" | head -1)
+          $APKSIGNER sign --ks release.keystore --ks-key-alias trackstack --ks-pass pass:trackstack123 --key-pass pass:trackstack123 --out TrackStack.apk TrackStack-aligned.apk
+
+      - name: Upload signed APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TrackStack-APK
+          path: TrackStack.apk
+          retention-days: 30
+
+      # 🌐 GitHub Pages: publica el build web en docs/ para probar
+      # la app desde el navegador del celular sin instalar nada.
+      - name: Publish web build to GitHub Pages (docs/)
+        run: |
+          rm -rf docs
+          cp -r dist docs
+          touch docs/.nojekyll
+
+      - name: Commit docs (web version)
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "🌐 deploy: web build a docs/ (GitHub Pages)"
+          file_pattern: docs/

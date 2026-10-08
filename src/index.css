@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════════════════════════
+   🧱 TRACKSTACK — estilos base
+   Modo oscuro por clase en <html> (la maneja TemaProvider).
+   El acento es una variable para que `npm run fork` pueda
+   reescribirlo sin tocar nada más.
+   ═══════════════════════════════════════════════════════════ */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --ts-acento: #22c55e;
+}
+
+@theme {
+  --color-acento: var(--ts-acento);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+}
+
+@keyframes aparecer {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes deslizar {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: var(--font-sans);
+  overscroll-behavior-y: none;
+}
+
+/* Safe areas del notch (iPhone y pantallas con recorte) */
+.pt-seguro {
+  padding-top: max(env(safe-area-inset-top), 0px);
+}
+.pb-seguro {
+  padding-bottom: max(env(safe-area-inset-bottom), 0px);
+}
+
+/* Scrollbar discreta */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(163 163 163 / 0.35) transparent;
+}

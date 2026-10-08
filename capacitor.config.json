@@ -1,0 +1,23 @@
+{
+  "appId": "com.trackstack.app",
+  "appName": "TrackStack",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": true
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "launchAutoHide": true,
+      "backgroundColor": "#0a0a0a",
+      "androidSplashResourceName": "splash",
+      "showSpinner": false
+    }
+  }
+}
