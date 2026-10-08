@@ -1,4 +1,4 @@
-name: Build TrackStack APK
+name: Build MusicTrack APK
 
 on:
   push:
@@ -97,7 +97,7 @@ jobs:
       - name: Configure app strings + version
         run: |
           mkdir -p android/app/src/main/res/values
-          echo '<?xml version="1.0" encoding="utf-8"?><resources><string name="app_name">TrackStack</string><string name="title_activity_main">TrackStack</string><string name="package_name">com.trackstack.app</string><string name="custom_url_scheme">com.trackstack.app</string></resources>' > android/app/src/main/res/values/strings.xml
+          echo '<?xml version="1.0" encoding="utf-8"?><resources><string name="app_name">MusicTrack</string><string name="title_activity_main">MusicTrack</string><string name="package_name">com.ridertrack.musictrack</string><string name="custom_url_scheme">com.ridertrack.musictrack</string></resources>' > android/app/src/main/res/values/strings.xml
           VERSION=$(node -p "require('./package.json').version")
           sed -i "s/versionCode 1$/versionCode ${{ github.run_number }}/; s/versionName \"1.0\"/versionName \"$VERSION\"/" android/app/build.gradle
           echo "✅ versionName $VERSION / versionCode ${{ github.run_number }}"
@@ -162,30 +162,30 @@ jobs:
             echo "⚠️ No hay KEYSTORE_BASE64 — generando keystore temporario"
             keytool -genkeypair \
               -keystore release.keystore \
-              -alias trackstack \
+              -alias musictrack \
               -keyalg RSA \
               -keysize 2048 \
               -validity 10000 \
-              -storepass trackstack123 \
-              -keypass trackstack123 \
-              -dname "CN=TrackStack, OU=Dev, O=Track, L=Lima, S=Lima, C=PE"
+              -storepass musictrack123 \
+              -keypass musictrack123 \
+              -dname "CN=MusicTrack, OU=Dev, O=Track, L=Lima, S=Lima, C=PE"
           fi
 
       - name: Zipalign APK
         run: |
           ZIPALIGN=$(find $ANDROID_SDK_ROOT -name "zipalign" | head -1)
-          $ZIPALIGN -v -p 4 android/app/build/outputs/apk/release/app-release-unsigned.apk TrackStack-aligned.apk
+          $ZIPALIGN -v -p 4 android/app/build/outputs/apk/release/app-release-unsigned.apk MusicTrack-aligned.apk
 
       - name: Sign APK
         run: |
           APKSIGNER=$(find $ANDROID_SDK_ROOT -name "apksigner" | head -1)
-          $APKSIGNER sign --ks release.keystore --ks-key-alias trackstack --ks-pass pass:trackstack123 --key-pass pass:trackstack123 --out TrackStack.apk TrackStack-aligned.apk
+          $APKSIGNER sign --ks release.keystore --ks-key-alias musictrack --ks-pass pass:musictrack123 --key-pass pass:musictrack123 --out MusicTrack.apk MusicTrack-aligned.apk
 
       - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: TrackStack-APK
-          path: TrackStack.apk
+          name: MusicTrack-APK
+          path: MusicTrack.apk
           retention-days: 30
 
       # 🌐 GitHub Pages: publica el build web en docs/ para probar

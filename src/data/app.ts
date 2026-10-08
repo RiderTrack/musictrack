@@ -20,10 +20,10 @@ export interface IdentidadApp {
 }
 
 export const APP: IdentidadApp = {
-  nombre: 'TrackStack',
-  id: 'com.trackstack.app',
+  nombre: 'MusicTrack',
+  id: 'com.ridertrack.musictrack',
   version: '1.0.0',
-  prefijoClaves: 'trackstack',
-  acento: '#22c55e',
+  prefijoClaves: 'musictrack',
+  acento: '#a855f7',
   descripcion: 'Esqueleto modular para apps de la familia Track — React 19 + Vite 6 + Tailwind 4 + Capacitor 6.',
 }

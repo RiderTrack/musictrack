@@ -1,4 +1,4 @@
-# 🧱 TrackStack
+# MusicTrack
 
 **El esqueleto de la familia Track** — cualquier app futura nace de acá: base modular, CI con APK firmado, temas, sesión, sync, IA y notificaciones ya resueltas. De las apps que ya andan (RiderTrack · WalletTrack · FitTrack · PlantTrack) para todas las que vienen.
 

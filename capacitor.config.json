@@ -1,6 +1,6 @@
 {
-  "appId": "com.trackstack.app",
-  "appName": "TrackStack",
+  "appId": "com.ridertrack.musictrack",
+  "appName": "MusicTrack",
   "webDir": "dist",
   "server": {
     "androidScheme": "https",

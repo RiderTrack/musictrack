@@ -10,7 +10,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --ts-acento: #22c55e;
+  --ts-acento: #a855f7;
 }
 
 @theme {
