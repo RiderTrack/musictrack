@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bell, Cpu, Database, Download, ListMusic, Music4, Smartphone, User, Wand2, X } from 'lucide-react'
+import { Bell, Cpu, Disc3, Download, ListMusic, Music2, Smartphone, User, Wand2, X } from 'lucide-react'
 import { APP } from '@/data/app'
 import { KPI } from '@/components/ui/KPI'
 import { Boton } from '@/components/ui/Boton'
@@ -16,7 +16,7 @@ import {
   versionIgnorada,
   type InfoActualizacion,
 } from '@/core/actualizacion/actualizacion'
-import { AJUSTES_POR_DEFECTO, type Ajustes, type Letra, type PestannaId } from '@/types'
+import { AJUSTES_POR_DEFECTO, type Ajustes, type Cancion, type Letra, type PestannaId } from '@/types'
 
 // ═══════════════════════════════════════════════════════════
 // 📊 DASHBOARD MusicTrack — saludo + estado (KPIs: IA, letras,
@@ -28,6 +28,7 @@ export function DashboardView({ irA }: { irA: (p: PestannaId) => void }) {
   const { mostrar } = useToast()
   const ajustes = leer<Ajustes>('ajustes', AJUSTES_POR_DEFECTO)
   const letras = leer<Letra[]>('letras', [])
+  const canciones = leer<Cancion[]>('canciones', [])
 
   const hora = new Date().getHours()
   const saludo = hora < 12 ? 'Buenos días' : hora < 19 ? 'Buenas tardes' : 'Buenas noches'
@@ -120,27 +121,39 @@ export function DashboardView({ irA }: { irA: (p: PestannaId) => void }) {
       <section className="grid grid-cols-2 gap-3" aria-label="Estado del sistema">
         <KPI
           icono={<Cpu className="h-4 w-4" />}
-          etiqueta="IA Claude"
-          valor={ajustes.tokenIA ? 'Lista' : 'Sin token'}
+          etiqueta="Letras — Claude"
+          valor={ajustes.tokenIA ? 'Motor listo' : 'Sin token'}
           detalle={ajustes.tokenIA ? ajustes.modeloIA : 'Configurala en Ajustes'}
         />
         <KPI
-          icono={<Music4 className="h-4 w-4" />}
+          icono={<Disc3 className="h-4 w-4" />}
+          etiqueta="Música — Suno"
+          valor={ajustes.tokenSuno ? 'Motor listo' : 'Sin clave'}
+          detalle={ajustes.tokenSuno ? `modelo ${ajustes.modeloSuno.replace('_', '.')}` : 'Configurala en Ajustes'}
+        />
+        <KPI
+          icono={<ListMusic className="h-4 w-4" />}
           etiqueta="Letras"
           valor={`${letras.length}`}
           detalle={letras.length > 0 ? `última: ${letras[0].titulo}`.slice(0, 26) : 'ninguna todavía'}
+        />
+        <KPI
+          icono={<Music2 className="h-4 w-4" />}
+          etiqueta="Canciones"
+          valor={`${canciones.filter((c) => c.estado === 'lista').length}`}
+          detalle={
+            canciones.length === 0
+              ? 'el motor doble las crea'
+              : canciones.some((c) => c.estado === 'generando')
+                ? `${canciones.filter((c) => c.estado === 'generando').length} generándose…`
+                : 'todas listas'
+          }
         />
         <KPI
           icono={<Smartphone className="h-4 w-4" />}
           etiqueta="Plataforma"
           valor={plataformaActual() === 'web' ? 'Web' : plataformaActual() === 'android' ? 'Android' : 'iOS'}
           detalle={firebaseConfigurado ? 'Firebase activo' : 'Modo local'}
-        />
-        <KPI
-          icono={<Database className="h-4 w-4" />}
-          etiqueta="Datos locales"
-          valor={`${contarClaves()} claves`}
-          detalle={`prefijo: ${APP.prefijoClaves}_`}
         />
         <KPI
           icono={<User className="h-4 w-4" />}
@@ -157,14 +170,17 @@ export function DashboardView({ irA }: { irA: (p: PestannaId) => void }) {
           <Boton icono={<Wand2 className="h-4 w-4" />} onClick={() => irA('crear')}>
             Crear letra
           </Boton>
-          <Boton variante="secundario" icono={<Bell className="h-4 w-4" />} onClick={probarNotificacion}>
-            Notificación
+          <Boton variante="secundario" icono={<Disc3 className="h-4 w-4" />} onClick={() => irA('musica')}>
+            Musicalizar
           </Boton>
           <Boton variante="secundario" icono={<ListMusic className="h-4 w-4" />} onClick={() => irA('letras')}>
             Mis letras
           </Boton>
-          <Boton variante="secundario" icono={<Download className="h-4 w-4" />} onClick={respaldo}>
-            Respaldo
+          <Boton variante="secundario" icono={<Bell className="h-4 w-4" />} onClick={probarNotificacion}>
+            Notificación
+          </Boton>
+          <Boton variante="fantasma" icono={<Download className="h-4 w-4" />} onClick={respaldo}>
+            Respaldo · {contarClaves()} claves
           </Boton>
         </div>
       </section>

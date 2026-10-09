@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react'
-import { Bot, Cloud, Database, Download, Eye, EyeOff, Info, KeyRound, LogIn, LogOut, Palette, RefreshCw, RotateCcw, Upload, User } from 'lucide-react'
+import { Bot, Cloud, Database, Download, Eye, EyeOff, Info, KeyRound, LogIn, LogOut, Music2, Palette, RefreshCw, RotateCcw, Upload, User } from 'lucide-react'
 import { APP } from '@/data/app'
 import { leer, guardar, descargarRespaldo, importarRespaldo, contarClaves } from '@/core/storage/almacenamiento'
 import { respaldarNube, restaurarNube } from '@/core/sync/sync'
 import { preguntarIA } from '@/core/ai/claude'
+import { consultarCreditos } from '@/core/ai/suno'
 import { useTema } from '@/core/theme/TemaProvider'
 import { useAuth } from '@/core/auth/useAuth'
 import { useToast } from '@/components/ui/Toast'
@@ -11,7 +12,7 @@ import { Boton } from '@/components/ui/Boton'
 import { firebaseConfigurado } from '@/services/firebase'
 import { plataformaActual, vibrar, abrirURL } from '@/core/natives/plataforma'
 import { buscarUltimaVersion, esMasNueva, type InfoActualizacion } from '@/core/actualizacion/actualizacion'
-import { AJUSTES_POR_DEFECTO, type Ajustes, type Tema } from '@/types'
+import { AJUSTES_POR_DEFECTO, MODELOS_SUNO, type Ajustes, type Tema } from '@/types'
 
 // ═══════════════════════════════════════════════════════════
 // ⚙️ AJUSTES — el panel de control del esqueleto:
@@ -26,7 +27,9 @@ export function AjustesView() {
   const { sesion, loginGoogle, salir } = useAuth()
   const [ajustes, setAjustes] = useState<Ajustes>(() => leer('ajustes', AJUSTES_POR_DEFECTO))
   const [verToken, setVerToken] = useState(false)
+  const [verTokenSuno, setVerTokenSuno] = useState(false)
   const [probandoIA, setProbandoIA] = useState(false)
+  const [probandoSuno, setProbandoSuno] = useState(false)
   const [sincronizando, setSincronizando] = useState(false)
   const inputArchivo = useRef<HTMLInputElement>(null)
 
@@ -60,6 +63,23 @@ export function AjustesView() {
       mostrar(e instanceof Error ? e.message : 'Falló la conexión', 'error', 4500)
     } finally {
       setProbandoIA(false)
+    }
+  }
+
+  async function probarSuno() {
+    if (!ajustes.tokenSuno) {
+      mostrar('Pegá tu clave de Suno API primero', 'info')
+      return
+    }
+    vibrar()
+    setProbandoSuno(true)
+    try {
+      const msg = await consultarCreditos({ url: ajustes.urlSuno, token: ajustes.tokenSuno })
+      mostrar(msg, 'ok', 4000)
+    } catch (e) {
+      mostrar(e instanceof Error ? e.message : 'Falló la conexión', 'error', 4500)
+    } finally {
+      setProbandoSuno(false)
     }
   }
 
@@ -185,6 +205,62 @@ export function AjustesView() {
         />
         <Boton className="mt-3 w-full" icono={<KeyRound className="h-4 w-4" />} onClick={probarIA} cargando={probandoIA}>
           Probar conexión
+        </Boton>
+      </section>
+
+      {/* ── Motor Suno (FASE 3: motor doble) ──────────── */}
+      <section className="rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+        <h2 className="mb-1 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-neutral-400">
+          <Music2 className="h-4 w-4" /> Motor de música — Suno
+        </h2>
+        <p className="mb-3 text-xs text-neutral-500 dark:text-neutral-400">
+          El segundo motor del motor doble: convierte las letras en canciones. Mismo patrón BYO — la clave queda solo en tu
+          dispositivo. (La cuenta gratis de <span className="font-semibold">suno.com</span> es aparte, para la app oficial; esta
+          clave es de la API.)
+        </p>
+        <label className="mb-1 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">URL base de la API</label>
+        <input
+          value={ajustes.urlSuno}
+          onChange={(e) => actualizar({ urlSuno: e.target.value.trim() })}
+          placeholder="https://api.sunoapi.org"
+          autoComplete="off"
+          className="h-11 w-full rounded-xl border border-neutral-300 bg-transparent px-3 text-sm outline-none transition-colors placeholder:text-neutral-400 focus:border-acento dark:border-neutral-700"
+        />
+        <label className="mb-1 mt-3 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+          Clave de Suno API (Bearer) — queda SOLO en tu dispositivo
+        </label>
+        <div className="relative">
+          <input
+            type={verTokenSuno ? 'text' : 'password'}
+            value={ajustes.tokenSuno}
+            onChange={(e) => actualizar({ tokenSuno: e.target.value.trim() })}
+            placeholder="sk-…"
+            autoComplete="off"
+            className="h-11 w-full rounded-xl border border-neutral-300 bg-transparent px-3 pr-10 text-sm outline-none transition-colors placeholder:text-neutral-400 focus:border-acento dark:border-neutral-700"
+          />
+          <button
+            type="button"
+            onClick={() => setVerTokenSuno((v) => !v)}
+            aria-label={verTokenSuno ? 'Ocultar clave' : 'Mostrar clave'}
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+          >
+            {verTokenSuno ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        </div>
+        <label className="mb-1 mt-3 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">Modelo</label>
+        <select
+          value={ajustes.modeloSuno}
+          onChange={(e) => actualizar({ modeloSuno: e.target.value })}
+          className="h-11 w-full rounded-xl border border-neutral-300 bg-transparent px-3 text-sm outline-none transition-colors focus:border-acento dark:border-neutral-700"
+        >
+          {MODELOS_SUNO.map((m) => (
+            <option key={m} value={m}>
+              Suno {m.replace('_', '.')}
+            </option>
+          ))}
+        </select>
+        <Boton className="mt-3 w-full" variante="secundario" icono={<KeyRound className="h-4 w-4" />} onClick={probarSuno} cargando={probandoSuno}>
+          Probar conexión y créditos
         </Boton>
       </section>
 

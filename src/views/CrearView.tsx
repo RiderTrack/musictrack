@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { PenLine, RefreshCw, Save, Share2, Sparkles, Wand2 } from 'lucide-react'
+import { Disc3, PenLine, RefreshCw, Save, Share2, Sparkles, Wand2 } from 'lucide-react'
 import { leer, guardar } from '@/core/storage/almacenamiento'
 import { preguntarIA } from '@/core/ai/claude'
 import { Boton } from '@/components/ui/Boton'
@@ -168,6 +168,27 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
     if (!letra) return
     const ok = await compartir({ titulo: letra.titulo, texto: `${letra.titulo}\n\n${letra.texto}` })
     if (!ok) mostrar('Compartir no disponible en esta plataforma', 'info')
+  }
+
+  /** FASE 3 (motor doble): manda la letra al segundo motor — Suno —
+   * para convertirla en canción. La guarda primero si hace falta. */
+  function musicalizar() {
+    if (!letra) return
+    vibrar()
+    if (!ajustes.tokenSuno) {
+      irA('ajustes')
+      mostrar('Primero configurá tu clave de Suno (motor de música)', 'info', 3500)
+      return
+    }
+    let id = letra.id
+    if (!guardada) {
+      const existentes = leer<Letra[]>(CLAVE_LETRAS, [])
+      guardar(CLAVE_LETRAS, [letra, ...existentes])
+      setGuardada(true)
+      id = letra.id
+    }
+    guardar('letraMusicalizar', id)
+    irA('musica')
   }
 
   const claseInput =
@@ -385,6 +406,9 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
               Regenerar
             </Boton>
           </div>
+          <Boton className="mt-2 w-full" icono={<Disc3 className="h-4 w-4" />} onClick={musicalizar}>
+            🎵 Musicalizar con Suno — motor doble
+          </Boton>
           <Boton variante="fantasma" className="mt-2 w-full" icono={<Share2 className="h-4 w-4" />} onClick={compartirLetra}>
             Compartir
           </Boton>

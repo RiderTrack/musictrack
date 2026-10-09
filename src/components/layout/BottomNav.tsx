@@ -1,9 +1,9 @@
-import { Home, ListMusic, Settings, Wand2 } from 'lucide-react'
+import { Disc3, Home, ListMusic, Settings, Wand2 } from 'lucide-react'
 import type { PestannaId } from '@/types'
 import { vibrar } from '@/core/natives/plataforma'
 
 // ═══════════════════════════════════════════════════════════
-// 🧭 BARRA INFERIOR — 4 destinos (patrón WalletTrack v2).
+// 🧭 BARRA INFERIOR — 5 destinos (patrón WalletTrack v2).
 // Para cambiar las pestañas: editá PESTANNAS, el tipo PestannaId
 // en types.ts y el switch en App.tsx.
 // ═══════════════════════════════════════════════════════════
@@ -17,6 +17,7 @@ const PESTANNAS: Array<{ id: PestannaId; etiqueta: string; icono: typeof Home }>
   { id: 'inicio', etiqueta: 'Inicio', icono: Home },
   { id: 'letras', etiqueta: 'Letras', icono: ListMusic },
   { id: 'crear', etiqueta: 'Crear', icono: Wand2 },
+  { id: 'musica', etiqueta: 'Música', icono: Disc3 },
   { id: 'ajustes', etiqueta: 'Ajustes', icono: Settings },
 ]
 
@@ -26,7 +27,7 @@ export function BottomNav({ activa, alCambiar }: Props) {
       className="fixed inset-x-0 bottom-0 z-40 border-t border-neutral-200 bg-white/95 pb-seguro backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/95"
       aria-label="Navegación principal"
     >
-      <div className="mx-auto grid max-w-2xl grid-cols-4">
+      <div className="mx-auto grid max-w-2xl grid-cols-5">
         {PESTANNAS.map(({ id, etiqueta, icono: Icono }) => {
           const activaAhora = id === activa
           return (

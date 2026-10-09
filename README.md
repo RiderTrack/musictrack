@@ -21,7 +21,7 @@ TrackStack es un **template repository**: cada app nueva empieza como copia limp
 | 👤 Sesión | `src/core/auth/` | Google (web popup + nativo Android), modo local si no hay Firebase |
 | 💾 Almacenamiento | `src/core/storage/` | localStorage con prefijo por app + respaldo JSON exportable/importable |
 | ☁️ Sync | `src/core/sync/` | Documento `{prefijo}_sync/{uid}` en Firestore, merge sin borrar |
-| 🤖 IA | `src/core/ai/` | Claude BYO-token: chat y visión (foto → texto) |
+| 🤖 IA | `src/core/ai/` | **Motor doble**: Claude (letras) + Suno (música) — ambos BYO-token, directo desde el cliente |
 | 🔔 Notificaciones | `src/core/notificaciones/` | Locales, con permiso Android 13+ |
 | 📱 Nativos | `src/core/natives/` | Cámara, vibración, share, splash, status bar — todo web-safe |
 | 🎛️ UI | `src/components/` | Botón, Modal, KPI, Toast, EmptyState, Header, BottomNav |
@@ -77,6 +77,7 @@ src/
 - **Capacitor 6** — la web se empaqueta como APK Android
 - **Firebase** — Auth (Google) + Firestore (sync) — *opcional: sin claves funciona 100% local*
 - **Claude API (Anthropic)** — BYO-token: cada usuario pone su clave
+- **Suno API** (sunoapi.org o compatible) — BYO-token: convierte letras en canciones con voz e instrumentos
 
 ## 💻 Desarrollo local
 
@@ -136,7 +137,8 @@ service cloud.firestore {
 | F3 | ✅ | Nativos + CI: cámara, haptics, notificaciones, share, splash + workflow APK firmado + Pages |
 | F4 | ✅ | IA: claude.ts BYO-token (chat + visión) + vista Ajustes completa |
 | F5 | ✅ | fork.mjs + README (bautizar apps en un comando) |
-| F6 | 🔜 | Ideas: biometría (@capgo/capacitor-native-biometric), export Excel (exceljs), widget de escritorio, más vistas ejemplo |
+| F6 | ✅ | **MusicTrack F3 — motor doble**: Suno convierte las letras en canciones (2 versiones por pedido, polling en vivo, reproductor integrado) |
+| F7 | 🔜 | Ideas: biometría (@capgo/capacitor-native-biometric), export Excel (exceljs), widget de escritorio, más vistas ejemplo |
 
 ## 🧱 Familia Track
 
