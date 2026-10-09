@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { Disc3, PenLine, RefreshCw, Save, Share2, Sparkles, Wand2 } from 'lucide-react'
+import { Disc3, Gift, PenLine, RefreshCw, Save, Share2, Sparkles, Wand2 } from 'lucide-react'
 import { leer, guardar } from '@/core/storage/almacenamiento'
 import { preguntarIA } from '@/core/ai/claude'
 import { Boton } from '@/components/ui/Boton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { CuerpoLetra } from '@/components/ui/CuerpoLetra'
 import { useToast } from '@/components/ui/Toast'
-import { compartir, vibrar } from '@/core/natives/plataforma'
+import { compartir, vibrar, abrirURL, copiarTexto } from '@/core/natives/plataforma'
 import {
   AJUSTES_POR_DEFECTO,
   ESTRUCTURAS,
@@ -189,6 +189,20 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
     }
     guardar('letraMusicalizar', id)
     irA('musica')
+  }
+
+  /** Vía gratis mientras cargás créditos: copia la letra y abre el Custom Mode
+   * de suno.com (cuenta Google, 50 créditos diarios incluidos). */
+  async function probarGratisSuno() {
+    if (!letra) return
+    vibrar()
+    const copiado = await copiarTexto(letra.texto)
+    await abrirURL('https://suno.com/create')
+    mostrar(
+      copiado ? 'Letra copiada ✔ — pegala en Suno (Custom) y listo' : 'Abrí Custom Mode en Suno y pegá tu letra',
+      'info',
+      5000,
+    )
   }
 
   const claseInput =
@@ -408,6 +422,9 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
           </div>
           <Boton className="mt-2 w-full" icono={<Disc3 className="h-4 w-4" />} onClick={musicalizar}>
             🎵 Musicalizar con Suno — motor doble
+          </Boton>
+          <Boton variante="fantasma" className="mt-2 w-full" icono={<Gift className="h-4 w-4" />} onClick={probarGratisSuno}>
+            Gratis: probar en suno.com (50 créditos/día)
           </Boton>
           <Boton variante="fantasma" className="mt-2 w-full" icono={<Share2 className="h-4 w-4" />} onClick={compartirLetra}>
             Compartir

@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
-import { ListMusic, PenLine, Save, Share2, Trash2, Wand2 } from 'lucide-react'
+import { ListMusic, Gift, PenLine, Save, Share2, Trash2, Wand2 } from 'lucide-react'
 import { leer, guardar } from '@/core/storage/almacenamiento'
 import { Boton } from '@/components/ui/Boton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Modal } from '@/components/ui/Modal'
 import { CuerpoLetra } from '@/components/ui/CuerpoLetra'
 import { useToast } from '@/components/ui/Toast'
-import { compartir, vibrar } from '@/core/natives/plataforma'
+import { compartir, vibrar, abrirURL, copiarTexto } from '@/core/natives/plataforma'
 import { GENEROS_MUSICALES, type Letra, type PestannaId } from '@/types'
 
 // ═══════════════════════════════════════════════════════════
@@ -73,6 +73,19 @@ export function LetrasView({ irA }: { irA: (p: PestannaId) => void }) {
   async function compartirLetra(l: Letra) {
     const ok = await compartir({ titulo: l.titulo, texto: `${l.titulo}\n\n${l.texto}` })
     if (!ok) mostrar('Compartir no disponible en esta plataforma', 'info')
+  }
+
+  /** Vía gratis (cuenta Google de suno.com, 50 créditos diarios): copia la
+   * letra al portapapeles y abre el Custom Mode de la web oficial. */
+  async function probarGratisSuno(l: Letra) {
+    vibrar()
+    const copiado = await copiarTexto(l.texto)
+    await abrirURL('https://suno.com/create')
+    mostrar(
+      copiado ? 'Letra copiada ✔ — pegala en Suno (Custom) y listo' : 'Abrí Custom Mode en Suno y pegá tu letra',
+      'info',
+      5000,
+    )
   }
 
   return (
@@ -208,6 +221,13 @@ export function LetrasView({ irA }: { irA: (p: PestannaId) => void }) {
                 Compartir
               </Boton>
             </div>
+            <Boton
+              className="w-full"
+              icono={<Gift className="h-4 w-4" />}
+              onClick={() => probarGratisSuno(abierta)}
+            >
+              Gratis: probar en suno.com (50 créditos/día)
+            </Boton>
             <Boton variante="peligro" className="w-full" icono={<Trash2 className="h-4 w-4" />} onClick={() => borrar(abierta.id)}>
               Eliminar
             </Boton>

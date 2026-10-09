@@ -22,7 +22,7 @@ export interface IdentidadApp {
 export const APP: IdentidadApp = {
   nombre: 'MusicTrack',
   id: 'com.ridertrack.musictrack',
-  version: '0.3.0',
+  version: '0.3.1',
   prefijoClaves: 'musictrack',
   acento: '#a855f7',
   descripcion: 'Creación de música con IA: generá letras con Claude, escribí las tuyas y musicalizá con Suno — el motor doble.',

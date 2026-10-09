@@ -209,7 +209,7 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
           <EmptyState
             icono={<Music2 className="h-7 w-7" />}
             titulo="Falta tu clave de Suno"
-            descripcion="Claude ya escribe las letras; para convertirlas en canción necesitás el segundo motor: tu clave de Suno API (se configura una vez en Ajustes, igual que el token de Claude)."
+            descripcion="Claude ya escribe las letras; para convertirlas en canción necesitás el segundo motor: tu clave de Suno API (se configura una vez en Ajustes, igual que el token de Claude). Mientras tanto, desde cualquier letra guardada podés usar «Probar gratis en suno.com» — 50 créditos diarios con tu cuenta Google."
             accion={<Boton onClick={() => irA('ajustes')}>Ir a Ajustes</Boton>}
           />
         ) : (
