@@ -127,9 +127,17 @@ export function DashboardView({ irA }: { irA: (p: PestannaId) => void }) {
         />
         <KPI
           icono={<Disc3 className="h-4 w-4" />}
-          etiqueta="Música — Suno"
-          valor={ajustes.tokenSuno ? 'Motor listo' : 'Sin clave'}
-          detalle={ajustes.tokenSuno ? `modelo ${ajustes.modeloSuno.replace('_', '.')}` : 'Configurala en Ajustes'}
+          etiqueta="Música — motores"
+          valor={ajustes.tokenSuno && ajustes.tokenLyria ? 'Doble listo' : ajustes.tokenSuno ? 'Suno listo' : ajustes.tokenLyria ? 'Lyria listo' : 'Sin claves'}
+          detalle={
+            ajustes.tokenSuno && ajustes.tokenLyria
+              ? `Suno ✓ · Lyria ${ajustes.modeloLyria.includes('clip') ? 'clip' : '3.5'} ✓`
+              : ajustes.tokenSuno
+                ? `modelo ${ajustes.modeloSuno.replace('_', '.')} — Lyria sin clave`
+                : ajustes.tokenLyria
+                  ? 'Suno sin clave — el plan B'
+                  : 'Configuralas en Ajustes'
+          }
         />
         <KPI
           icono={<ListMusic className="h-4 w-4" />}

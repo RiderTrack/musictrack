@@ -21,7 +21,7 @@ TrackStack es un **template repository**: cada app nueva empieza como copia limp
 | 👤 Sesión | `src/core/auth/` | Google (web popup + nativo Android), modo local si no hay Firebase |
 | 💾 Almacenamiento | `src/core/storage/` | localStorage con prefijo por app + respaldo JSON exportable/importable |
 | ☁️ Sync | `src/core/sync/` | Documento `{prefijo}_sync/{uid}` en Firestore, merge sin borrar |
-| 🤖 IA | `src/core/ai/` | **Motor doble**: Claude (letras) + Suno (música) — ambos BYO-token, directo desde el cliente |
+| 🤖 IA | `src/core/ai/` | **Motor triple**: Claude (letras) + Suno (música) + Google Lyria (música, plan B) — todos BYO-token, directo desde el cliente |
 | 🔔 Notificaciones | `src/core/notificaciones/` | Locales, con permiso Android 13+ |
 | 📱 Nativos | `src/core/natives/` | Cámara, vibración, share, splash, status bar — todo web-safe |
 | 🎛️ UI | `src/components/` | Botón, Modal, KPI, Toast, EmptyState, Header, BottomNav |
@@ -78,6 +78,7 @@ src/
 - **Firebase** — Auth (Google) + Firestore (sync) — *opcional: sin claves funciona 100% local*
 - **Claude API (Anthropic)** — BYO-token: cada usuario pone su clave
 - **Suno API** (sunoapi.org o compatible) — BYO-token: convierte letras en canciones con voz e instrumentos
+- **Lyria** (Google Gemini API) — BYO-token: el motor alternativo de música; si Suno se queda sin créditos, cambiás de motor. El MP3 se guarda en IndexedDB (`core/storage/audio.ts`)
 
 ## 💻 Desarrollo local
 
@@ -138,7 +139,8 @@ service cloud.firestore {
 | F4 | ✅ | IA: claude.ts BYO-token (chat + visión) + vista Ajustes completa |
 | F5 | ✅ | fork.mjs + README (bautizar apps en un comando) |
 | F6 | ✅ | **MusicTrack F3 — motor doble**: Suno convierte las letras en canciones (2 versiones por pedido, polling en vivo, reproductor integrado) |
-| F7 | 🔜 | Ideas: biometría (@capgo/capacitor-native-biometric), export Excel (exceljs), widget de escritorio, más vistas ejemplo |
+| F7 | ✅ | **v0.4.0 — triple motor**: Google Lyria como motor alternativo (API key de Google AI Studio, letras con header `Lyrics:`, MP3 en IndexedDB, selector de motor en la pestaña Música) + vía gratis «Probar en suno.com» |
+| F8 | 🔜 | Ideas: biometría (@capgo/capacitor-native-biometric), export Excel (exceljs), widget de escritorio, más vistas ejemplo |
 
 ## 🧱 Familia Track
 

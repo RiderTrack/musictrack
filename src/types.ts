@@ -12,6 +12,8 @@ export interface Ajustes {
   tokenSuno: string
   urlSuno: string
   modeloSuno: string
+  tokenLyria: string
+  modeloLyria: string
   onboardingVisto: boolean
 }
 
@@ -21,6 +23,8 @@ export const AJUSTES_POR_DEFECTO: Ajustes = {
   tokenSuno: '',
   urlSuno: 'https://api.sunoapi.org',
   modeloSuno: 'V4_5',
+  tokenLyria: '',
+  modeloLyria: 'lyria-3.5',
   onboardingVisto: false,
 }
 
@@ -99,6 +103,13 @@ export interface Letra {
 
 export const MODELOS_SUNO = ['V3_5', 'V4', 'V4_5', 'V5'] as const
 
+export const MODELOS_LYRIA = [
+  { id: 'lyria-3.5', etiqueta: 'Lyria 3.5 · canción completa (~2 min, $0.08)' },
+  { id: 'lyria-3-clip-preview', etiqueta: 'Lyria 3 Clip · clip de 30 segundos ($0.04)' },
+] as const
+
+export type MotorMusica = 'suno' | 'lyria'
+
 export const ESTILOS_RAPIDOS = [
   'reggaetón, dembow, perreo, 96 bpm',
   'trap latino, oscuro, 808 profundo',
@@ -110,7 +121,7 @@ export const ESTILOS_RAPIDOS = [
   'R&B latino, suave, groovy',
 ] as const
 
-/** Una canción generada con Suno a partir de una letra. */
+/** Una canción generada con Suno o Lyria a partir de una letra. */
 export interface Cancion {
   id: string
   taskId: string
@@ -119,6 +130,10 @@ export interface Cancion {
   letraId?: string
   instrumental: boolean
   modelo: string
+  /** Con cuál de los dos motores de música se generó (viejas registros: Suno). */
+  motor?: MotorMusica
+  /** true = el MP3 vive en IndexedDB (Lyria), no en una URL CDN (Suno). */
+  audioLocal?: boolean
   estado: 'generando' | 'lista' | 'error'
   urlAudio?: string
   urlPortada?: string

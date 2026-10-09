@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Disc3, Loader2, Music2, RefreshCw, Share2, Sparkles, Trash2, Wand2 } from 'lucide-react'
+import { Disc3, Loader2, Music2, Piano, RefreshCw, Share2, Sparkles, Trash2, Wand2 } from 'lucide-react'
 import { leer, guardar, borrarClave } from '@/core/storage/almacenamiento'
+import { guardarAudio, leerAudio, borrarAudio } from '@/core/storage/audio'
 import { generarMusica, consultarPista, type MotorSuno } from '@/core/ai/suno'
+import { generarMusicaLyria, armarPromptLyria, type MotorLyria } from '@/core/ai/lyria'
 import { Boton } from '@/components/ui/Boton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useToast } from '@/components/ui/Toast'
@@ -9,17 +11,21 @@ import { compartir, vibrar } from '@/core/natives/plataforma'
 import {
   AJUSTES_POR_DEFECTO,
   ESTILOS_RAPIDOS,
+  MODELOS_LYRIA,
   type Ajustes,
   type Cancion,
   type Letra,
+  type MotorMusica,
   type PestannaId,
 } from '@/types'
 
 // ═══════════════════════════════════════════════════════════
-// 🎧 MÚSICA (FASE 3 — motor doble): elegí una letra de la
-// biblioteca (o pegá una), definí el estilo y Suno la convierte
-// en canción — dos versiones con voz e instrumentos por pedido.
-// El polling consulta cada pista hasta que llega el audio.
+// 🎧 MÚSICA (FASE 3 — motor doble → triple): elegí una letra
+// de la biblioteca (o pegá una), definí el estilo y elegí motor:
+//   🎵 Suno — 2 versiones por pedido, polling en vivo (API paga)
+//   🎹 Google Lyria — canción o clip de 30s, con tu API key de
+//      Google AI Studio (la misma cuenta Google del Firebase)
+// Si un motor se queda sin créditos, cambiás al otro y seguís.
 // ═══════════════════════════════════════════════════════════
 
 const CLAVE_CANCIONES = 'canciones'
@@ -33,12 +39,37 @@ function formatoDuracion(seg?: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
+/** Reproductor que resuelve el audio venga de CDN (Suno) o IndexedDB (Lyria). */
+function Reproductor({ cancion }: { cancion: Cancion }) {
+  const [src, setSrc] = useState<string | null>(cancion.urlAudio ?? null)
+  useEffect(() => {
+    let vivo = true
+    if (!src && cancion.audioLocal) {
+      leerAudio(cancion.id).then((url) => {
+        if (vivo) setSrc(url)
+      })
+    }
+    return () => {
+      vivo = false
+    }
+  }, [cancion.id, cancion.audioLocal, src])
+  if (!src) {
+    return (
+      <p className="mt-2.5 flex items-center gap-1.5 text-xs text-neutral-400">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" /> cargando el audio…
+      </p>
+    )
+  }
+  return <audio controls preload="none" src={src} className="mt-2.5 h-10 w-full" />
+}
+
 export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
   const { mostrar } = useToast()
   const ajustes = leer<Ajustes>('ajustes', AJUSTES_POR_DEFECTO)
   const letras = leer<Letra[]>('letras', [])
 
   // Formulario
+  const [motor, setMotor] = useState<MotorMusica>(() => (ajustes.tokenSuno ? 'suno' : ajustes.tokenLyria ? 'lyria' : 'suno'))
   const [letraId, setLetraId] = useState('')
   const [texto, setTexto] = useState('')
   const [titulo, setTitulo] = useState('')
@@ -71,12 +102,15 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Polling: mientras haya pistas 'generando', consultar cada N segundos.
+  // Polling: mientras haya pistas 'generando' (Suno), consultar cada N segundos.
+  // Las canciones de Lyria llegan completas de una — no necesitan polling.
   useEffect(() => {
     alVivo.current = true
     function tick() {
       if (!alVivo.current) return
-      const pendientes = leer<Cancion[]>(CLAVE_CANCIONES, []).filter((c) => c.estado === 'generando')
+      const pendientes = leer<Cancion[]>(CLAVE_CANCIONES, []).filter(
+        (c) => c.estado === 'generando' && c.motor !== 'lyria',
+      )
       if (!pendientes.length || !ajustes.tokenSuno) return
       const motor: MotorSuno = { url: ajustes.urlSuno, token: ajustes.tokenSuno }
       pendientes.forEach(async (c) => {
@@ -132,6 +166,14 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
 
   async function generar() {
     if (cargando) return
+    if (motor === 'lyria') {
+      await generarConLyria()
+      return
+    }
+    await generarConSuno()
+  }
+
+  async function generarConSuno() {
     if (!ajustes.tokenSuno) {
       irA('ajustes')
       mostrar('Configurá tu clave de Suno en Ajustes', 'info', 3200)
@@ -165,6 +207,7 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
           letraId: letraId || undefined,
           instrumental,
           modelo: ajustes.modeloSuno,
+          motor: 'suno' as const,
           estado: 'generando' as const,
           fecha: Date.now(),
         }))
@@ -178,17 +221,73 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
     }
   }
 
+  /** Google Lyria: la llamada espera hasta que el MP3 llega completo
+   * (sincrónica — hasta ~3 min para canción entera). */
+  async function generarConLyria() {
+    if (!ajustes.tokenLyria) {
+      irA('ajustes')
+      mostrar('Configurá tu API key de Google (Lyria) en Ajustes', 'info', 3200)
+      return
+    }
+    const textoLimpio = texto.trim()
+    if (!instrumental && textoLimpio.length < 20) {
+      mostrar('Elegí una letra de tu biblioteca o pegála (mínimo unas líneas)', 'info', 3500)
+      return
+    }
+    const tituloLimpio = titulo.trim() || 'Mi canción'
+    const estiloLimpio = estilo.trim() || 'pop latino'
+    vibrar()
+    setCargando(true)
+    try {
+      const motorL: MotorLyria = { token: ajustes.tokenLyria }
+      const resultado = await generarMusicaLyria(motorL, {
+        prompt: armarPromptLyria({
+          estilo: estiloLimpio,
+          titulo: tituloLimpio,
+          letra: textoLimpio,
+          instrumental,
+        }),
+        modelo: ajustes.modeloLyria,
+      })
+      const id = `${Date.now()}`
+      await guardarAudio(id, resultado.audioBase64, resultado.mime)
+      const nueva: Cancion = {
+        id,
+        taskId: '',
+        titulo: tituloLimpio,
+        estilo: estiloLimpio,
+        letraId: letraId || undefined,
+        instrumental,
+        modelo: ajustes.modeloLyria,
+        motor: 'lyria',
+        audioLocal: true,
+        estado: 'lista',
+        fecha: Date.now(),
+      }
+      setCanciones((cs) => [nueva, ...cs])
+      vibrar()
+      mostrar(`¡«${tituloLimpio}» lista! 🎹`, 'ok')
+    } catch (e) {
+      mostrar(e instanceof Error ? e.message : 'Falló Lyria', 'error', 5000)
+    } finally {
+      setCargando(false)
+    }
+  }
+
   function borrar(id: string) {
     vibrar('media')
+    const cancion = canciones.find((c) => c.id === id)
+    if (cancion?.audioLocal) void borrarAudio(id)
     setCanciones((cs) => cs.filter((c) => c.id !== id))
     mostrar('Canción eliminada', 'info')
   }
 
   async function compartirCancion(c: Cancion) {
+    const motorTxt = c.motor === 'lyria' ? 'Lyria de Google' : 'Suno'
     const ok = await compartir({
       titulo: c.titulo,
-      texto: `🎵 «${c.titulo}» — hecha con MusicTrack (letra: Claude · música: Suno)`,
-      url: c.urlAudio,
+      texto: `🎵 «${c.titulo}» — hecha con MusicTrack (letra: Claude · música: ${motorTxt})`,
+      url: c.motor === 'lyria' ? undefined : c.urlAudio,
     })
     if (!ok) mostrar('Compartir no disponible en esta plataforma', 'info')
   }
@@ -196,6 +295,9 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
   const claseInput =
     'h-11 w-full rounded-xl border border-neutral-300 bg-transparent px-3 text-sm outline-none transition-colors focus:border-acento dark:border-neutral-700'
   const generando = canciones.filter((c) => c.estado === 'generando').length
+  const tokenDelMotor = motor === 'suno' ? ajustes.tokenSuno : ajustes.tokenLyria
+  const modeloActual = motor === 'suno' ? `Suno ${ajustes.modeloSuno.replace('_', '.')}` : (MODELOS_LYRIA.find((m) => m.id === ajustes.modeloLyria)?.etiqueta ?? ajustes.modeloLyria)
+  const etiquetaModelo = MODELOS_LYRIA.find((m) => m.id === ajustes.modeloLyria)?.etiqueta.split(' · ')[0] ?? 'Lyria'
 
   return (
     <div className="space-y-4">
@@ -205,13 +307,56 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
           <Disc3 className="h-4 w-4" /> Nueva canción
         </h2>
 
-        {!ajustes.tokenSuno ? (
-          <EmptyState
-            icono={<Music2 className="h-7 w-7" />}
-            titulo="Falta tu clave de Suno"
-            descripcion="Claude ya escribe las letras; para convertirlas en canción necesitás el segundo motor: tu clave de Suno API (se configura una vez en Ajustes, igual que el token de Claude). Mientras tanto, desde cualquier letra guardada podés usar «Probar gratis en suno.com» — 50 créditos diarios con tu cuenta Google."
-            accion={<Boton onClick={() => irA('ajustes')}>Ir a Ajustes</Boton>}
-          />
+        {/* Selector de motor (triple motor): Suno 🎵 o Google Lyria 🎹 */}
+        <div
+          role="tablist"
+          aria-label="Motor de música"
+          className="mb-4 grid grid-cols-2 gap-1 rounded-2xl border border-neutral-200 bg-neutral-100 p-1 dark:border-neutral-800 dark:bg-neutral-950"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={motor === 'suno'}
+            onClick={() => setMotor('suno')}
+            className={`flex h-10 items-center justify-center gap-2 rounded-xl text-sm font-semibold transition-colors ${
+              motor === 'suno'
+                ? 'bg-white text-acento shadow-sm dark:bg-neutral-800'
+                : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
+            }`}
+          >
+            🎵 Suno
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={motor === 'lyria'}
+            onClick={() => setMotor('lyria')}
+            className={`flex h-10 items-center justify-center gap-2 rounded-xl text-sm font-semibold transition-colors ${
+              motor === 'lyria'
+                ? 'bg-white text-acento shadow-sm dark:bg-neutral-800'
+                : 'text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
+            }`}
+          >
+            <Piano className="h-4 w-4" /> Google Lyria
+          </button>
+        </div>
+
+        {!tokenDelMotor ? (
+          motor === 'suno' ? (
+            <EmptyState
+              icono={<Music2 className="h-7 w-7" />}
+              titulo="Falta tu clave de Suno"
+              descripcion="Claude ya escribe las letras; para convertirlas en canción necesitás el segundo motor: tu clave de Suno API (se configura una vez en Ajustes, igual que el token de Claude). Mientras tanto, desde cualquier letra guardada podés usar «Probar gratis en suno.com» — 50 créditos diarios con tu cuenta Google."
+              accion={<Boton onClick={() => irA('ajustes')}>Ir a Ajustes</Boton>}
+            />
+          ) : (
+            <EmptyState
+              icono={<Piano className="h-7 w-7" />}
+              titulo="Falta tu API key de Google"
+              descripcion="Lyria es el motor alternativo: la misma cuenta Google de tu Firebase, con API key de Google AI Studio (aistudio.google.com). Útil cuando Suno se queda sin créditos — cambiás de motor y seguís creando."
+              accion={<Boton onClick={() => irA('ajustes')}>Ir a Ajustes</Boton>}
+            />
+          )
         ) : (
           <div className="space-y-3">
             {letras.length > 0 && (
@@ -252,13 +397,13 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
               </label>
               <label className="block">
                 <span className="mb-1 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">Modelo</span>
-                <input value={ajustes.modeloSuno} readOnly className={`${claseInput} opacity-60`} />
+                <input value={modeloActual} readOnly className={`${claseInput} opacity-60`} />
               </label>
             </div>
 
             <label className="block">
               <span className="mb-1 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">
-                Estilo (lo que Suno sí lee bien: géneros, instrumentos, BPM, mood)
+                Estilo (géneros, instrumentos, BPM, mood — lo que el motor lee bien)
               </span>
               <input
                 value={estilo}
@@ -306,10 +451,18 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
             </button>
 
             <Boton className="w-full" icono={<Wand2 className="h-4 w-4" />} onClick={generar} cargando={cargando}>
-              {cargando ? 'Enviando a Suno…' : 'Generar música'}
+              {cargando
+                ? motor === 'lyria'
+                  ? 'Lyria está componiendo… (hasta 3 min)'
+                  : 'Enviando a Suno…'
+                : motor === 'lyria'
+                  ? `Generar con ${etiquetaModelo}`
+                  : 'Generar música'}
             </Boton>
             <p className="text-center text-[11px] text-neutral-400">
-              Cada pedido crea 2 versiones · tarda 1 a 3 min · modelo {ajustes.modeloSuno}
+              {motor === 'suno'
+                ? 'Cada pedido crea 2 versiones · tarda 1 a 3 min · modelo ' + ajustes.modeloSuno.replace('_', '.')
+                : 'Lyria devuelve la canción completa · requiere billing en Google AI Studio'}
             </p>
           </div>
         )}
@@ -337,7 +490,7 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
           <EmptyState
             icono={<Disc3 className="h-7 w-7" />}
             titulo="Todavía no hay canciones"
-            descripcion="Elegí una letra de tu biblioteca, definí el estilo y Suno arma la canción completa — voz, coros e instrumentos. El motor doble en acción: Claude la escribió, Suno la canta."
+            descripcion="Elegí una letra de tu biblioteca, definí el estilo y elegí motor: Suno (2 versiones por pedido) o Google Lyria (canción completa de una). Claude la escribió, el motor que elijas la canta."
           />
         ) : (
           <ul className="space-y-2.5">
@@ -370,7 +523,7 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                       </span>
                     </div>
                     <p className="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400">
-                      {c.estilo}
+                      {c.motor === 'lyria' ? '🎹 Lyria' : '🎵 Suno'} · {c.estilo}
                       {c.duracionSeg ? ` · ${formatoDuracion(c.duracionSeg)}` : ''}
                       {c.instrumental ? ' · instrumental' : ''}
                     </p>
@@ -383,9 +536,7 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                     {c.estado === 'error' && (
                       <p className="mt-2 text-xs text-red-500">{c.error ?? 'La generación falló — probá de nuevo'}</p>
                     )}
-                    {c.estado === 'lista' && c.urlAudio && (
-                      <audio controls preload="none" src={c.urlAudio} className="mt-2.5 h-10 w-full" />
-                    )}
+                    {c.estado === 'lista' && <Reproductor cancion={c} />}
                   </div>
                 </div>
 
@@ -410,10 +561,10 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
         )}
       </section>
 
-      {/* Nota del motor doble */}
-      {canciones.length === 0 && ajustes.tokenSuno && (
+      {/* Nota de motores */}
+      {canciones.length === 0 && (tokenDelMotor || ajustes.tokenLyria) && (
         <p className="flex items-center justify-center gap-1.5 text-center text-[11px] text-neutral-400">
-          <Sparkles className="h-3 w-3" /> Motor doble: letra de Claude → música de Suno
+          <Sparkles className="h-3 w-3" /> Motor de música doble: Suno 🎵 o Google Lyria 🎹 — cambiás cuando quieras
         </p>
       )}
     </div>
