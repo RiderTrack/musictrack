@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { Bot, Cloud, Database, Download, Eye, EyeOff, Info, KeyRound, LogIn, LogOut, Music2, Palette, Piano, RefreshCw, RotateCcw, Upload, User } from 'lucide-react'
 import { APP } from '@/data/app'
-import { leer, guardar, descargarRespaldo, importarRespaldo, contarClaves } from '@/core/storage/almacenamiento'
+import { leerAjustes, leer, guardar, descargarRespaldo, importarRespaldo, contarClaves } from '@/core/storage/almacenamiento'
 import { respaldarNube, restaurarNube } from '@/core/sync/sync'
 import { preguntarIA } from '@/core/ai/claude'
 import { consultarCreditos } from '@/core/ai/suno'
@@ -26,7 +26,7 @@ export function AjustesView() {
   const { mostrar } = useToast()
   const { tema, fijarTema } = useTema()
   const { sesion, loginGoogle, salir } = useAuth()
-  const [ajustes, setAjustes] = useState<Ajustes>(() => leer('ajustes', AJUSTES_POR_DEFECTO))
+  const [ajustes, setAjustes] = useState<Ajustes>(leerAjustes)
   const [verToken, setVerToken] = useState(false)
   const [verTokenSuno, setVerTokenSuno] = useState(false)
   const [verTokenLyria, setVerTokenLyria] = useState(false)

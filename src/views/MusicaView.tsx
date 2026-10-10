@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Disc3, Loader2, Music2, Piano, RefreshCw, Share2, Sparkles, Trash2, Wand2 } from 'lucide-react'
-import { leer, guardar, borrarClave } from '@/core/storage/almacenamiento'
+import { leerAjustes, leer, guardar, borrarClave } from '@/core/storage/almacenamiento'
 import { guardarAudio, leerAudio, borrarAudio } from '@/core/storage/audio'
 import { generarMusica, consultarPista, type MotorSuno } from '@/core/ai/suno'
 import { generarMusicaLyria, armarPromptLyria, type MotorLyria } from '@/core/ai/lyria'
@@ -9,10 +9,8 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { useToast } from '@/components/ui/Toast'
 import { compartir, vibrar } from '@/core/natives/plataforma'
 import {
-  AJUSTES_POR_DEFECTO,
   ESTILOS_RAPIDOS,
   MODELOS_LYRIA,
-  type Ajustes,
   type Cancion,
   type Letra,
   type MotorMusica,
@@ -65,7 +63,7 @@ function Reproductor({ cancion }: { cancion: Cancion }) {
 
 export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
   const { mostrar } = useToast()
-  const ajustes = leer<Ajustes>('ajustes', AJUSTES_POR_DEFECTO)
+  const ajustes = leerAjustes()
   const letras = leer<Letra[]>('letras', [])
 
   // Formulario
@@ -296,7 +294,7 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
     'h-11 w-full rounded-xl border border-neutral-300 bg-transparent px-3 text-sm outline-none transition-colors focus:border-acento dark:border-neutral-700'
   const generando = canciones.filter((c) => c.estado === 'generando').length
   const tokenDelMotor = motor === 'suno' ? ajustes.tokenSuno : ajustes.tokenLyria
-  const modeloActual = motor === 'suno' ? `Suno ${ajustes.modeloSuno.replace('_', '.')}` : (MODELOS_LYRIA.find((m) => m.id === ajustes.modeloLyria)?.etiqueta ?? ajustes.modeloLyria)
+  const modeloActual = motor === 'suno' ? `Suno ${(ajustes.modeloSuno ?? 'V4_5').replace('_', '.')}` : (MODELOS_LYRIA.find((m) => m.id === ajustes.modeloLyria)?.etiqueta ?? ajustes.modeloLyria)
   const etiquetaModelo = MODELOS_LYRIA.find((m) => m.id === ajustes.modeloLyria)?.etiqueta.split(' · ')[0] ?? 'Lyria'
 
   return (
@@ -461,7 +459,7 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
             </Boton>
             <p className="text-center text-[11px] text-neutral-400">
               {motor === 'suno'
-                ? 'Cada pedido crea 2 versiones · tarda 1 a 3 min · modelo ' + ajustes.modeloSuno.replace('_', '.')
+                ? 'Cada pedido crea 2 versiones · tarda 1 a 3 min · modelo ' + (ajustes.modeloSuno ?? 'V4_5').replace('_', '.')
                 : 'Lyria devuelve la canción completa · requiere billing en Google AI Studio'}
             </p>
           </div>

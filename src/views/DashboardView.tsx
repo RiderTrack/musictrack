@@ -6,7 +6,7 @@ import { Boton } from '@/components/ui/Boton'
 import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/core/auth/useAuth'
 import { firebaseConfigurado } from '@/services/firebase'
-import { contarClaves, descargarRespaldo, leer } from '@/core/storage/almacenamiento'
+import { leerAjustes, contarClaves, descargarRespaldo, leer } from '@/core/storage/almacenamiento'
 import { notificar } from '@/core/notificaciones/notificaciones'
 import { plataformaActual, vibrar, abrirURL } from '@/core/natives/plataforma'
 import {
@@ -16,7 +16,7 @@ import {
   versionIgnorada,
   type InfoActualizacion,
 } from '@/core/actualizacion/actualizacion'
-import { AJUSTES_POR_DEFECTO, type Ajustes, type Cancion, type Letra, type PestannaId } from '@/types'
+import { type Cancion, type Letra, type PestannaId } from '@/types'
 
 // ═══════════════════════════════════════════════════════════
 // 📊 DASHBOARD MusicTrack — saludo + estado (KPIs: IA, letras,
@@ -26,7 +26,7 @@ import { AJUSTES_POR_DEFECTO, type Ajustes, type Cancion, type Letra, type Pesta
 export function DashboardView({ irA }: { irA: (p: PestannaId) => void }) {
   const { sesion } = useAuth()
   const { mostrar } = useToast()
-  const ajustes = leer<Ajustes>('ajustes', AJUSTES_POR_DEFECTO)
+  const ajustes = leerAjustes()
   const letras = leer<Letra[]>('letras', [])
   const canciones = leer<Cancion[]>('canciones', [])
 
@@ -131,9 +131,9 @@ export function DashboardView({ irA }: { irA: (p: PestannaId) => void }) {
           valor={ajustes.tokenSuno && ajustes.tokenLyria ? 'Doble listo' : ajustes.tokenSuno ? 'Suno listo' : ajustes.tokenLyria ? 'Lyria listo' : 'Sin claves'}
           detalle={
             ajustes.tokenSuno && ajustes.tokenLyria
-              ? `Suno ✓ · Lyria ${ajustes.modeloLyria.includes('clip') ? 'clip' : '3.5'} ✓`
+              ? `Suno ✓ · Lyria ${(ajustes.modeloLyria ?? '').includes('clip') ? 'clip' : '3.5'} ✓`
               : ajustes.tokenSuno
-                ? `modelo ${ajustes.modeloSuno.replace('_', '.')} — Lyria sin clave`
+                ? `modelo ${(ajustes.modeloSuno ?? 'V4_5').replace('_', '.')} — Lyria sin clave`
                 : ajustes.tokenLyria
                   ? 'Suno sin clave — el plan B'
                   : 'Configuralas en Ajustes'

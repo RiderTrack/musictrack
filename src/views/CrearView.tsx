@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Disc3, Gift, PenLine, RefreshCw, Save, Share2, Sparkles, Wand2 } from 'lucide-react'
-import { leer, guardar } from '@/core/storage/almacenamiento'
+import { leerAjustes, leer, guardar } from '@/core/storage/almacenamiento'
 import { preguntarIA } from '@/core/ai/claude'
 import { Boton } from '@/components/ui/Boton'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -8,12 +8,10 @@ import { CuerpoLetra } from '@/components/ui/CuerpoLetra'
 import { useToast } from '@/components/ui/Toast'
 import { compartir, vibrar, abrirURL, copiarTexto } from '@/core/natives/plataforma'
 import {
-  AJUSTES_POR_DEFECTO,
   ESTRUCTURAS,
   GENEROS_MUSICALES,
   IDIOMAS,
   MOODS,
-  type Ajustes,
   type Letra,
   type PestannaId,
 } from '@/types'
@@ -39,7 +37,7 @@ const SISTEMA_LETRISTA = [
 
 export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
   const { mostrar } = useToast()
-  const ajustes = leer<Ajustes>('ajustes', AJUSTES_POR_DEFECTO)
+  const ajustes = leerAjustes()
 
   const [tema, setTema] = useState('')
   const [genero, setGenero] = useState<string>(GENEROS_MUSICALES[0])

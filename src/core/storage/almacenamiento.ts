@@ -1,4 +1,5 @@
 import { APP } from '@/data/app'
+import { AJUSTES_POR_DEFECTO, type Ajustes } from '@/types'
 
 // ═══════════════════════════════════════════════════════════
 // 💾 ALMACENAMIENTO — patrón WalletTrack:
@@ -20,7 +21,12 @@ export function leer<T>(clave: string, defecto: T): T {
   try {
     const crudo = localStorage.getItem(claveCompleta(clave))
     if (crudo === null) return defecto
-    return JSON.parse(crudo) as T
+    const parsed = JSON.parse(crudo) as T
+    // 🩹 Defensa anti-corrupción (v0.4.1): si se espera un array
+    // (letras, canciones…) y lo guardado es otra cosa, devolver el
+    // default en vez de dejar que reviente el render (.filter & co.).
+    if (Array.isArray(defecto) && !Array.isArray(parsed)) return defecto
+    return parsed
   } catch {
     return defecto
   }
@@ -36,6 +42,30 @@ export function guardar(clave: string, valor: unknown): void {
 
 export function borrarClave(clave: string): void {
   localStorage.removeItem(claveCompleta(clave))
+}
+
+// ═══════════════════════════════════════════════════════════
+// 🩹 AJUSTES con merge de defaults (v0.4.1 — fix pantalla blanca):
+// los ajustes guardados por una versión vieja pueden no tener
+// los campos nuevos (ej: modeloLyria) → cualquier acceso tipo
+// ajustes.modeloLyria.includes(…) explotaba y React desmontaba
+// toda la app (pantalla en blanco). Desde acá, SIEMPRE se
+// devuelven los campos nuevos con su valor por defecto, y el
+// objeto guardado se auto-migra la primera vez que se lee.
+// Regla para el futuro: los ajustes se leen con leerAjustes(),
+// NUNCA con leer<Ajustes>('ajustes', …).
+// ═══════════════════════════════════════════════════════════
+
+export function leerAjustes(): Ajustes {
+  const guardados = leer<Partial<Ajustes>>('ajustes', {})
+  const fusionados: Ajustes = { ...AJUSTES_POR_DEFECTO, ...guardados }
+  // Auto-migración: si faltaba algún campo, guarda la versión curada
+  // para que el resto de la app (y los respaldos) ya lo tengan.
+  const faltan = (Object.keys(AJUSTES_POR_DEFECTO) as (keyof Ajustes)[]).some(
+    (k) => guardados[k] === undefined,
+  )
+  if (faltan && Object.keys(guardados).length > 0) guardar('ajustes', fusionados)
+  return fusionados
 }
 
 /** Instantánea de TODAS las claves `prefijo_*` (valor crudo). */
