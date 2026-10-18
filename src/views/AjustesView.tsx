@@ -317,6 +317,30 @@ export function AjustesView() {
         </Boton>
       </section>
 
+      {/* ── 💾 Descargas de MP3 (v0.7.1) ─────────────── */}
+      <section className="rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+        <h2 className="mb-1 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-neutral-400">
+          <Download className="h-4 w-4" /> Descargas de MP3
+        </h2>
+        <p className="mb-3 text-xs text-neutral-500 dark:text-neutral-400">
+          Cuando tocás ⬇ en una canción, el MP3 se guarda de verdad en el teléfono: en la carpeta pública{' '}
+          <span className="font-semibold">Documentos</span>, adentro de esta subcarpeta tuya (se crea sola la primera vez).
+          En la versión web cae en las descargas del navegador.
+        </p>
+        <label className="mb-1 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">Nombre de la carpeta</label>
+        <input
+          value={ajustes.carpetaDescargas}
+          onChange={(e) => actualizar({ carpetaDescargas: e.target.value })}
+          placeholder="Música de Rudy"
+          maxLength={40}
+          className="h-11 w-full rounded-xl border border-neutral-300 bg-transparent px-3 text-sm outline-none transition-colors placeholder:text-neutral-400 focus:border-acento dark:border-neutral-700"
+        />
+        <p className="mt-1.5 text-[11px] text-neutral-400">
+          Quedará en: <span className="font-semibold text-neutral-500 dark:text-neutral-300">Documentos/{ajustes.carpetaDescargas || '…'}/</span>
+          — la ves con el explorador de archivos y los reproductores de música
+        </p>
+      </section>
+
       {/* ── Motor alternativo: Google Lyria ──────────── */}
       <section className="rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
         <h2 className="mb-1 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-neutral-400">

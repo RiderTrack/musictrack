@@ -14,6 +14,8 @@ export interface Ajustes {
   modeloSuno: string
   tokenLyria: string
   modeloLyria: string
+  /** Carpeta (dentro de Descargas) donde caen los MP3 (v0.7.1). */
+  carpetaDescargas: string
   onboardingVisto: boolean
 }
 
@@ -25,6 +27,7 @@ export const AJUSTES_POR_DEFECTO: Ajustes = {
   modeloSuno: 'V6',
   tokenLyria: '',
   modeloLyria: 'lyria-3.5',
+  carpetaDescargas: 'Música de Rudy',
   onboardingVisto: false,
 }
 

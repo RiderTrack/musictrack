@@ -139,7 +139,7 @@ jobs:
       - name: Update AndroidManifest permissions
         run: |
           MANIFEST="android/app/src/main/AndroidManifest.xml"
-          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />\n    <application|' "$MANIFEST"
+          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.VIBRATE" />\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />\n    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />\n    <application android:requestLegacyExternalStorage="true"|' "$MANIFEST"
           echo "✅ Permisos en el manifest:" && grep -c "uses-permission" "$MANIFEST"
 
       - name: Set Gradle permissions

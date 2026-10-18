@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Disc3, Download, Loader2, Music2, Piano, RefreshCw, Rocket, Share2, Skull, Sparkles, Trash2, Wand2 } from 'lucide-react'
 import { leerAjustes, leer, guardar, borrarClave } from '@/core/storage/almacenamiento'
 import { guardarAudio, leerAudio, borrarAudio } from '@/core/storage/audio'
+import { guardarMp3EnDescargas, nombreMp3 } from '@/core/natives/descargas'
 import { generarMusica, consultarPistas, creditosRestantes, type MotorSuno } from '@/core/ai/suno'
 import { aplicarGrupo, EVENTO_CANCIONES } from '@/core/ai/seguimiento'
 import { pedirPermisoNotificaciones, programarRecordatorio } from '@/core/notificaciones/notificaciones'
@@ -91,25 +92,6 @@ function hintEdad(fecha: number): string {
   if (min <= 3) return ''
   if (min <= 9) return ' — en horas pico la cola se demora'
   return ' — si falla, Suno devuelve los créditos solos'
-}
-
-/** Nombre de archivo seguro para el MP3 que se descarga. */
-function nombreMp3(titulo: string): string {
-  const limpio = titulo.replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, ' ').trim()
-  return `${limpio || 'Mi canción'} - MusicTrack.mp3`
-}
-
-/** Dispara la descarga de un blob en el navegador/WebView. */
-function guardarBlob(blob: Blob, nombre: string): void {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = nombre
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  // el blob vive en memoria: revocar tarde para no cortar la descarga
-  window.setTimeout(() => URL.revokeObjectURL(url), 30000)
 }
 
 /** Reproductor que resuelve el audio venga de CDN (Suno) o IndexedDB (Lyria). */
@@ -537,9 +519,11 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
     )
   }
 
-  /** 💾 v0.6.0 — baja el MP3 al dispositivo: Lyria lo lee de
-   * IndexedDB; Suno lo baja del CDN. Si el CDN bloquea (CORS) o
-   * la red no da, abre el audio en pestaña nueva para guardarlo. */
+  /** 💾 v0.7.1 — baja el MP3 al dispositivo y lo guarda DE VERDAD:
+   * en el APK va a Descargas/<tu carpeta>/ (plugin nativo — el
+   * truco del <a download> no descargaba nada en la WebView);
+   * en web, la descarga clásica del navegador. Si el CDN bloquea
+   * (CORS) o la red no da, abre el audio para guardarlo a mano. */
   const [bajandoId, setBajandoId] = useState<string | null>(null)
   async function descargarMp3(c: Cancion) {
     if (bajandoId || (!c.urlAudio && !c.audioLocal)) return
@@ -556,9 +540,11 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
         blob = await resp.blob()
       }
       if (!blob) throw new Error('sin audio')
-      guardarBlob(blob, nombreMp3(c.titulo))
+      const nombre = nombreMp3(c.titulo, c.version)
+      const resultado = await guardarMp3EnDescargas(blob, nombre, ajustes.carpetaDescargas)
+      if (!resultado.ok) throw new Error(resultado.error)
       vibrar()
-      mostrar('MP3 guardado en tus descargas 💾', 'ok')
+      mostrar(`MP3 guardado en ${resultado.ruta} 💾`, 'ok', 5000)
     } catch {
       if (c.urlAudio) {
         await abrirURL(c.urlAudio)
