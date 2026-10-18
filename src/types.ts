@@ -376,6 +376,17 @@ export interface Cancion {
    * a suno.com en canciones trabadas en la cola, sin depender de que
    * la letra siga existiendo en la biblioteca. */
   letraTexto?: string
+  /** v0.8.0 — audioId de Suno (el `id` del item en sunoData): es lo
+   * que pide /generate/extend para continuar ESTA pista. Las canciones
+   * viejas no lo tienen; se recupera al vuelo consultando record-info
+   * (match por urlAudio). */
+  audioId?: string
+  /** v0.8.0 — si esta canción es la continuación (extend) de otra,
+   * guarda el id de la tarjeta original. */
+  continuacionDe?: string
+  /** v0.8.0 — segundo donde arranca esta continuación dentro de la
+   * original (parámetro continueAt que se mandó a Suno). */
+  continueAtSeg?: number
   estado: 'generando' | 'lista' | 'error'
   /** Estado tal cual lo reporta sunoapi.org (PENDING, TEXT_SUCCESS,
    * FIRST_SUCCESS…) — alimenta la barrita de etapas de la v0.4.5. */

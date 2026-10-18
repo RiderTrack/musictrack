@@ -1,14 +1,38 @@
 import { useEffect, useRef, useState } from 'react'
-import { Disc3, Download, Loader2, Music2, Piano, RefreshCw, Rocket, Share2, Skull, Sparkles, Trash2, Wand2 } from 'lucide-react'
+import {
+  Disc3,
+  Download,
+  FastForward,
+  Link2,
+  Loader2,
+  Music2,
+  Piano,
+  RefreshCw,
+  Rocket,
+  Share2,
+  Skull,
+  Sparkles,
+  Trash2,
+  Wand2,
+} from 'lucide-react'
 import { leerAjustes, leer, guardar, borrarClave } from '@/core/storage/almacenamiento'
 import { guardarAudio, leerAudio, borrarAudio } from '@/core/storage/audio'
 import { guardarMp3EnDescargas, nombreMp3 } from '@/core/natives/descargas'
-import { generarMusica, consultarPistas, creditosRestantes, type MotorSuno } from '@/core/ai/suno'
+import {
+  consultarLetraConTiempos,
+  consultarPistas,
+  creditosRestantes,
+  extenderMusica,
+  generarMusica,
+  modeloSunoSoportaDuracion,
+  type MotorSuno,
+} from '@/core/ai/suno'
 import { aplicarGrupo, EVENTO_CANCIONES } from '@/core/ai/seguimiento'
 import { pedirPermisoNotificaciones, programarRecordatorio } from '@/core/notificaciones/notificaciones'
 import { generarMusicaLyria, armarPromptLyria, type MotorLyria } from '@/core/ai/lyria'
 import { Boton } from '@/components/ui/Boton'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { compartir, vibrar, abrirURL, copiarTexto } from '@/core/natives/plataforma'
 import {
@@ -53,6 +77,88 @@ function claseChip(activo: boolean): string {
  * la hora y media, la tarea se cayó y lo honesto es decirlo en la
  * tarjeta — no dejarla pulsando «en cola» por 8 horas. */
 const MIN_TAREA_MUERTA = 90
+
+// ⏱️ v0.8.0 — DURACIÓN ESTIMADA: velocidad de canto promedio
+// (power metal ~2,8 palabras/s, balada ~1,8 — 2,35 pisa el medio)
+// + aire instrumental fijo (intro, solo, final). Con esto se
+// calcula cuántos segundos necesita una letra para cantarse entera.
+const PALABRAS_POR_SEGUNDO = 2.35
+const SEGUNDOS_INSTRUMENTALES = 35
+
+/** Palabras CANTABLES de una letra: sin las marcas de sección
+ * ([Coro], [Verso 1]…) que Suno lee pero no canta. */
+function contarPalabrasCantables(texto: string): number {
+  return texto
+    .replace(/\[[^\]]*\]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean).length
+}
+
+/** Estima la duración que necesita una letra para cantarse entera.
+ * Devuelve null si no hay letra; `capada` avisa que la letra pide
+ * más de los 6:00 máximo de la API (360 s) — `cruda` es lo que
+ * pediría sin ese techo, para el aviso honesto. */
+function estimarDuracion(texto: string): { seg: number; cruda: number; capada: boolean } | null {
+  const palabras = contarPalabrasCantables(texto)
+  if (!palabras) return null
+  const bruto = Math.ceil((palabras / PALABRAS_POR_SEGUNDO + SEGUNDOS_INSTRUMENTALES) / 10) * 10
+  return { seg: Math.min(360, Math.max(60, bruto)), cruda: Math.max(60, bruto), capada: bruto > 360 }
+}
+
+/** v0.8.0 — la parte de la letra que QUEDÓ SIN CANTARSE sabiendo
+ * cuántas palabras se cantaron: recorre línea por línea (las marcas
+ * [Coro] no cuentan) y junta desde la primera línea incompleta
+ * hasta el final — mejor re-cantar una línea entera que dejarla
+ * cortada a la mitad. */
+function restanteDeLetra(texto: string, palabrasCantadas: number): string {
+  if (!texto.trim() || palabrasCantadas <= 0) return ''
+  let cantadas = 0
+  let modoRestante = false
+  const restantes: string[] = []
+  for (const linea of texto.split('\n')) {
+    const esMarca = /^\s*\[[^\]]*\]\s*$/.test(linea)
+    if (esMarca) {
+      if (modoRestante) restantes.push(linea)
+      continue
+    }
+    const palabras = linea.replace(/\[[^\]]*\]/g, ' ').split(/\s+/).filter(Boolean).length
+    if (palabras === 0) {
+      if (modoRestante) restantes.push(linea)
+      continue
+    }
+    if (!modoRestante && cantadas + palabras <= palabrasCantadas) {
+      cantadas += palabras // línea cantada entera
+      continue
+    }
+    modoRestante = true
+    restantes.push(linea)
+  }
+  return restantes.join('\n').trim()
+}
+
+/** v0.8.0 — RESPALDO sin letra sincronizada: las últimas estrofas
+ * de la letra (el usuario dijo que lo que se corta es el final).
+ * Corta por estrofas completas (bloques separados por línea
+ * vacía), así el pre-relleno queda prolijo y solo hay que borrar
+ * lo que sí se cantó. */
+function colaDeLetra(texto: string): string {
+  const bloques = texto
+    .split(/\n\s*\n/)
+    .map((b) => b.trim())
+    .filter(Boolean)
+  if (!bloques.length) return ''
+  const cuantas = Math.max(1, Math.ceil(bloques.length * 0.25))
+  return bloques.slice(-cuantas).join('\n\n')
+}
+
+/** v0.8.0 — le saca la cabecera ID3v2 a un MP3 para poder pegarlo
+ * después de otro sin dejar el tag en el medio del archivo. */
+async function sinId3(blob: Blob): Promise<Blob> {
+  const cabeza = new Uint8Array(await blob.slice(0, 10).arrayBuffer())
+  if (cabeza.length < 10 || cabeza[0] !== 0x49 || cabeza[1] !== 0x44 || cabeza[2] !== 0x33) return blob // "ID3"
+  const tamanio = (cabeza[6] << 21) | (cabeza[7] << 14) | (cabeza[8] << 7) | cabeza[9]
+  return blob.slice(10 + tamanio)
+}
 
 function formatoDuracion(seg?: number): string {
   if (!seg || seg <= 0) return ''
@@ -131,6 +237,12 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
   const [estilo, setEstilo] = useState('')
   const [instrumental, setInstrumental] = useState(false)
   const [cargando, setCargando] = useState(false)
+
+  // ⏱️ v0.8.0 — DURACIÓN: 'auto' (Suno decide, como siempre),
+  // 'letra' (se calcula según la letra para que alcance entera —
+  // el fix del corte) o un número fijo de segundos (2 a 6 min).
+  const [duracion, setDuracion] = useState<'auto' | 'letra' | number>('letra')
+  const estimacion = duracion === 'letra' && !instrumental ? estimarDuracion(texto) : null
 
   // Biblioteca de canciones
   const [canciones, setCanciones] = useState<Cancion[]>(() => leer<Cancion[]>(CLAVE_CANCIONES, []))
@@ -328,6 +440,14 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
     }
     const tituloLimpio = titulo.trim() || 'Mi canción'
     const estiloLimpio = estilo.trim() || 'pop latino'
+    // Duración que se manda a la API: 'letra' calcula según las
+    // palabras (en instrumental no hay letra que ajustar → auto).
+    const duracionSeg =
+      duracion === 'auto' || instrumental
+        ? undefined
+        : duracion === 'letra'
+          ? (estimarDuracion(textoLimpio)?.seg ?? undefined)
+          : duracion
     vibrar()
     setCargando(true)
     try {
@@ -338,6 +458,7 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
         titulo: tituloLimpio,
         instrumental,
         modelo: ajustes.modeloSuno,
+        duracionSeg,
       })
       const nuevas: Cancion[] = pistas
         .filter((p) => p.taskId)
@@ -559,6 +680,195 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
 
   const claseInput =
     'h-11 w-full rounded-xl border border-neutral-300 bg-transparent px-3 text-sm outline-none transition-colors focus:border-acento dark:border-neutral-700'
+
+  // ═══════════════════════════════════════════════════════════
+  // ⏩ v0.8.0 — EXTENDER UNA CANCIÓN YA HECHA (el arreglo para las
+  // que se cortaron antes de terminar la letra): Suno continúa la
+  // pista desde el segundo elegido cantando lo que falte, en el
+  // mismo estilo. Al abrir el modal se intenta detectar el corte
+  // exacto con la letra sincronizada de la API (qué líneas quedaron
+  // sin cantarse y en qué segundo terminó el canto).
+  // ═══════════════════════════════════════════════════════════
+  const [extModal, setExtModal] = useState<Cancion | null>(null)
+  const [extAudioId, setExtAudioId] = useState('')
+  const [extResolviendo, setExtResolviendo] = useState(false)
+  const [extDetectado, setExtDetectado] = useState('')
+  const [extContinueAt, setExtContinueAt] = useState(0)
+  const [extLetra, setExtLetra] = useState('')
+  const [extEstilo, setExtEstilo] = useState('')
+  const [extTitulo, setExtTitulo] = useState('')
+  const [extEnviando, setExtEnviando] = useState(false)
+  const extLetraTocada = useRef(false)
+
+  async function abrirExtender(c: Cancion) {
+    if (!ajustes.tokenSuno || c.motor === 'lyria') return
+    vibrar()
+    extLetraTocada.current = false
+    setExtModal(c)
+    setExtDetectado('')
+    setExtAudioId(c.audioId ?? '')
+    setExtEstilo(c.estilo)
+    setExtTitulo(`${c.titulo} — continuación`)
+    const dur = c.duracionSeg ?? 240
+    // pre-relleno de respaldo (mientras/o por si la API no ayuda):
+    // las últimas estrofas — lo que se corta siempre es el final
+    setExtContinueAt(Math.max(5, Math.floor(dur - 10)))
+    setExtLetra(c.instrumental ? '' : colaDeLetra(c.letraTexto ?? ''))
+    if (!c.taskId) return
+    const motor: MotorSuno = { url: ajustes.urlSuno, token: ajustes.tokenSuno }
+    setExtResolviendo(true)
+    try {
+      let audioId = c.audioId
+      if (!audioId) {
+        // canción vieja (pre-v0.8.0): el audioId se recupera de
+        // record-info, matcheando la versión por su URL de audio
+        const pistas = await consultarPistas(motor, c.taskId, c.titulo)
+        const pista = pistas.find((p) => p.urlAudio && p.urlAudio === c.urlAudio) ?? pistas.find((p) => p.audioId)
+        audioId = pista?.audioId
+        if (audioId) setCanciones((cs) => cs.map((x) => (x.id === c.id ? { ...x, audioId } : x)))
+      }
+      if (audioId) {
+        setExtAudioId(audioId)
+        const tiempos = await consultarLetraConTiempos(motor, c.taskId, audioId)
+        if (tiempos) {
+          if (tiempos.finUltimoCanto) {
+            setExtContinueAt(Math.floor(Math.min(Math.max(tiempos.finUltimoCanto - 2, 5), Math.max(5, dur - 3))))
+          }
+          if (!extLetraTocada.current && !c.instrumental) {
+            const restante = restanteDeLetra(c.letraTexto ?? '', tiempos.palabrasCantadas)
+            if (restante) setExtLetra(restante)
+          }
+          setExtDetectado(
+            tiempos.finUltimoCanto
+              ? `✔ detecté el corte: el canto termina en ${formatoDuracion(tiempos.finUltimoCanto)} de ${formatoDuracion(
+                  dur,
+                )} — te cargué la letra que faltó (revisala igual)`
+              : '✔ Suno cantó toda la letra de esta pista — si igual falta algo, escribilo a mano',
+          )
+        } else {
+          setExtDetectado('no pude leer la letra sincronizada de esta pista — te cargué las últimas estrofas: borrá las que ya se cantaron')
+        }
+      } else {
+        setExtDetectado('no pude recuperar el audioId de esta pista (¿tarea vieja en Suno?) — probá con la otra versión')
+      }
+    } catch {
+      setExtDetectado('no pude consultar Suno para detectar el corte — armá la continuación a mano')
+    } finally {
+      setExtResolviendo(false)
+    }
+  }
+
+  async function enviarExtension() {
+    const c = extModal
+    if (!c || extEnviando) return
+    if (!extAudioId) {
+      mostrar('Todavía no tengo el audioId de esa pista — esperá un segundito o reabrí el modal', 'info', 4000)
+      return
+    }
+    if (extContinueAt <= 0 || (c.duracionSeg && extContinueAt >= c.duracionSeg)) {
+      mostrar('El segundo de corte tiene que estar DENTRO de la canción', 'error', 4000)
+      return
+    }
+    if (!c.instrumental && extLetra.trim().length < 10) {
+      mostrar('Escribí la letra que falta cantar (o tocá Cancelar)', 'info', 3500)
+      return
+    }
+    setExtEnviando(true)
+    try {
+      const motor: MotorSuno = { url: ajustes.urlSuno, token: ajustes.tokenSuno }
+      const tituloFin = extTitulo.trim() || `${c.titulo} — continuación`
+      const estiloFin = extEstilo.trim() || c.estilo
+      const pistas = await extenderMusica(motor, {
+        audioId: extAudioId,
+        taskId: c.taskId || undefined,
+        continueAt: extContinueAt,
+        letra: extLetra.trim(),
+        estilo: estiloFin,
+        titulo: tituloFin,
+        instrumental: c.instrumental,
+        // ⚠️ el modelo tiene que ser el MISMO de la original
+        modelo: c.modelo || ajustes.modeloSuno,
+      })
+      const nuevas: Cancion[] = pistas
+        .filter((p) => p.taskId)
+        .map((p, i) => ({
+          id: `${Date.now()}-ext${i}`,
+          taskId: p.taskId,
+          audioId: p.audioId,
+          titulo: tituloFin,
+          estilo: estiloFin,
+          letraTexto: c.instrumental ? undefined : extLetra.trim(),
+          instrumental: c.instrumental,
+          modelo: c.modelo || ajustes.modeloSuno,
+          motor: 'suno' as const,
+          continuacionDe: c.id,
+          continueAtSeg: extContinueAt,
+          estado: 'generando' as const,
+          fecha: Date.now(),
+        }))
+      if (!nuevas.length) throw new Error('La API no devolvió pistas')
+      setCanciones((cs) => [...nuevas, ...cs])
+      void actualizarCreditos()
+      void (async () => {
+        if (await pedirPermisoNotificaciones()) {
+          for (const n of nuevas) if (n.taskId) void programarRecordatorio(n.taskId, tituloFin)
+        }
+      })()
+      vibrar()
+      mostrar('Continuación en el horno 🔥 — te aviso cuando llegue 🔔', 'ok', 4500)
+      setExtModal(null)
+    } catch (e) {
+      mostrar(e instanceof Error ? e.message : 'Falló la extensión', 'error', 4500)
+    } finally {
+      setExtEnviando(false)
+    }
+  }
+
+  /** 🔗 v0.8.0 — une original + continuación en un solo MP3 y lo baja
+   * como «— completa». Si Suno ya devolvió la continuación CON la
+   * parte original adentro (pasa: la versión final ya viene entera),
+   * se baja directa. La unión es por concatenación de blobs: puede
+   * quedar un mini-salto donde se juntan — normal, no está re-grabada. */
+  const [uniendoId, setUniendoId] = useState<string | null>(null)
+  async function unirYDescargar(c: Cancion) {
+    if (uniendoId || !c.urlAudio) return
+    const original = canciones.find((o) => o.id === c.continuacionDe)
+    if (!original?.urlAudio) {
+      mostrar('No encontré la canción original (¿la borraste?) — bajá las dos partes por separado', 'info', 4500)
+      return
+    }
+    setUniendoId(c.id)
+    try {
+      const yaCompleta = (c.duracionSeg ?? 0) > (c.continueAtSeg ?? 0) + 45
+      const nombre = nombreMp3(c.titulo.replace('— continuación', '— completa'))
+      let blob: Blob
+      if (yaCompleta) {
+        const resp = await fetch(c.urlAudio)
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+        blob = await resp.blob()
+      } else {
+        const [r1, r2] = await Promise.all([fetch(original.urlAudio), fetch(c.urlAudio)])
+        if (!r1.ok || !r2.ok) throw new Error('no pude bajar los audios')
+        const [b1, b2] = await Promise.all([r1.blob(), r2.blob()])
+        blob = new Blob([b1, await sinId3(b2)], { type: 'audio/mpeg' })
+      }
+      const res = await guardarMp3EnDescargas(blob, nombre, ajustes.carpetaDescargas)
+      if (!res.ok) throw new Error(res.error)
+      vibrar()
+      mostrar(
+        yaCompleta
+          ? `Suno ya devolvió la canción COMPLETA — guardada en ${res.ruta} 💾`
+          : `Canción completa guardada en ${res.ruta} 💾 (si escuchás un saltito donde se unen, es normal)`,
+        'ok',
+        6000,
+      )
+    } catch {
+      mostrar('No pude unir los MP3 — bajá las dos partes por separado', 'error', 5000)
+    } finally {
+      setUniendoId(null)
+    }
+  }
+
   const generando = canciones.filter((c) => c.estado === 'generando').length
   // Semáforo: hace cuánto que Suno no contesta un polling exitoso
   const segundosSinRespuesta = ultimoContacto ? Math.max(0, Math.round((Date.now() - ultimoContacto) / 1000)) : null
@@ -822,6 +1132,67 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
               </div>
             </div>
 
+            {/* ⏱️ v0.8.0 — DURACIÓN: la causa raíz del corte era que
+                Suno elegía solo la longitud y en letras largas no le
+                alcanzaba para cantar todo. Ahora se le dice CUÁNTO
+                tiene que durar (docs: 10–360 s, solo modelos V6/V5_5). */}
+            {motor === 'suno' &&
+              (modeloSunoSoportaDuracion(ajustes.modeloSuno ?? 'V6') ? (
+                <div>
+                  <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                    Duración <span className="font-medium normal-case">(que la letra alcance ENTERA)</span>
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      aria-pressed={duracion === 'auto'}
+                      onClick={() => setDuracion('auto')}
+                      className={claseChip(duracion === 'auto')}
+                    >
+                      {duracion === 'auto' ? '✓ ' : ''}Auto — Suno decide
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={duracion === 'letra'}
+                      onClick={() => setDuracion('letra')}
+                      className={claseChip(duracion === 'letra')}
+                    >
+                      {duracion === 'letra' ? '✓ ' : ''}⏱ Ajustada a la letra
+                    </button>
+                    {[120, 180, 240, 300, 360].map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        aria-pressed={duracion === s}
+                        onClick={() => setDuracion(s)}
+                        className={claseChip(duracion === s)}
+                      >
+                        {duracion === s ? '✓ ' : ''}
+                        {formatoDuracion(s)}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-1.5 text-[11px] leading-relaxed text-neutral-400">
+                    {duracion === 'auto'
+                      ? 'Suno decide la longitud (como siempre fue) — ojo: en letras largas suele quedarse corto.'
+                      : duracion === 'letra'
+                        ? estimacion
+                          ? `Tu letra pide ≈ ${formatoDuracion(estimacion.capada ? estimacion.cruda : estimacion.seg)}${
+                              estimacion.capada
+                                ? ' — más que el máximo de la API (6:00): usaré 6:00 y si aún se corta, completala con ⏩ Extender'
+                                : ' y Suno canta la letra entera dentro de ese tiempo'
+                            }.`
+                          : 'Elegí o pegá una letra y calculo los segundos que necesita para cantarse entera.'
+                        : `Fijada en ${formatoDuracion(duracion as number)} — Suno acomoda el canto a esa duración.`}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-[11px] leading-relaxed text-neutral-400">
+                  Tu modelo ({modeloSunoBonito(ajustes.modeloSuno ?? 'V4_5')}) no soporta duración fija — pasate a V6 en
+                  Ajustes para que la letra alcance entera.
+                </p>
+              ))}
+
             {/* Recetas completas (género + instrumentos + BPM): tocar
                 una REEMPLAZA el estilo entero. */}
             <div>
@@ -996,7 +1367,7 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                       </span>
                     </div>
                     <p className="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400">
-                      {c.motor === 'lyria' ? '🎹 Lyria' : '🎵 Suno'} · {c.estilo}
+                      {c.motor === 'lyria' ? '🎹 Lyria' : c.continuacionDe ? '⏩ continuación' : '🎵 Suno'} · {c.estilo}
                       {c.duracionSeg ? ` · ${formatoDuracion(c.duracionSeg)}` : ''}
                       {c.instrumental ? ' · instrumental' : ''}
                     </p>
@@ -1075,6 +1446,20 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                   </div>
                 </div>
 
+                {/* ⏩ v0.8.0 — EXTENDER: la canción quedó corta / se
+                    cortó la letra? Suno la continúa cantando lo que
+                    falte, en el mismo estilo, sin rehacerla. */}
+                {c.estado === 'lista' && c.motor !== 'lyria' && (
+                  <button
+                    type="button"
+                    onClick={() => void abrirExtender(c)}
+                    title="Suno sigue la canción desde donde elijas, cantando la letra que falte en el mismo estilo"
+                    className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-acento/40 bg-acento/10 px-3 py-2 text-[11px] font-bold text-acento transition-colors hover:bg-acento/20"
+                  >
+                    <FastForward className="h-3.5 w-3.5" /> Extender — ¿se cortó la letra? Completala acá
+                  </button>
+                )}
+
                 {c.estado === 'lista' && (
                   <div className="mt-3 grid grid-cols-3 gap-2">
                     <Boton variante="secundario" tamano="sm" icono={<Share2 className="h-3.5 w-3.5" />} onClick={() => compartirCancion(c)}>
@@ -1094,6 +1479,21 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                     </Boton>
                   </div>
                 )}
+
+                {/* 🔗 v0.8.0 — en las continuaciones: unir original +
+                    continuación y bajar el MP3 de la canción completa. */}
+                {c.estado === 'lista' && c.continuacionDe && (
+                  <Boton
+                    variante="fantasma"
+                    tamano="sm"
+                    className="mt-2 w-full"
+                    icono={<Link2 className="h-3.5 w-3.5" />}
+                    cargando={uniendoId === c.id}
+                    onClick={() => void unirYDescargar(c)}
+                  >
+                    Unir con la original y bajar la completa
+                  </Boton>
+                )}
                 {c.estado !== 'lista' && (
                   <Boton variante="fantasma" tamano="sm" className="mt-2 w-full" icono={<Trash2 className="h-3.5 w-3.5" />} onClick={() => borrar(c.id)}>
                     {muerta ? 'Quitar la tarjeta caída' : 'Quitar de la lista'}
@@ -1112,6 +1512,99 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
           <Sparkles className="h-3 w-3" /> Motor de música doble: Suno 🎵 o Google Lyria 🎹 — cambiás cuando quieras
         </p>
       )}
+
+      {/* ⏩ v0.8.0 — MODAL EXTENDER: arma la continuación de una
+          canción que se cortó antes de terminar la letra (o que
+          simplemente se quiere alargar). */}
+      <Modal
+        abierto={!!extModal}
+        onCerrar={() => {
+          if (!extEnviando) setExtModal(null)
+        }}
+        titulo={`⏩ Extender «${extModal?.titulo ?? ''}»`}
+      >
+        {extModal && (
+          <div className="space-y-3">
+            <p className="text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
+              Suno sigue esta canción desde el segundo que elijas y canta la letra que falte en el MISMO estilo. Cuando
+              llegue queda como tarjeta nueva — después podés unir las dos y bajar el MP3 completo.
+            </p>
+            {extResolviendo && (
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-acento">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> mirando dónde se cortó el canto…
+              </p>
+            )}
+            {extDetectado && (
+              <p className="rounded-xl bg-acento/10 px-3 py-2 text-[11px] font-semibold leading-relaxed text-acento">
+                {extDetectado}
+              </p>
+            )}
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+                Continuar desde el segundo {formatoDuracion(extContinueAt)} de{' '}
+                {formatoDuracion(extModal.duracionSeg) || 'la canción'}
+              </span>
+              <input
+                type="number"
+                min={5}
+                step={1}
+                value={extContinueAt}
+                onChange={(e) => setExtContinueAt(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+                className={claseInput}
+              />
+            </label>
+            {!extModal.instrumental && (
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+                  Letra que falta cantar
+                </span>
+                <textarea
+                  value={extLetra}
+                  onChange={(e) => {
+                    extLetraTocada.current = true
+                    setExtLetra(e.target.value)
+                  }}
+                  rows={7}
+                  placeholder={'[Coro]\nLo que quedó sin cantarse…'}
+                  className="min-h-[120px] w-full resize-y rounded-xl border border-neutral-300 bg-transparent p-3 text-sm outline-none transition-colors placeholder:text-neutral-400 focus:border-acento dark:border-neutral-700"
+                />
+              </label>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">Estilo</span>
+                <input
+                  value={extEstilo}
+                  onChange={(e) => setExtEstilo(e.target.value)}
+                  maxLength={200}
+                  className={claseInput}
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">Título</span>
+                <input value={extTitulo} onChange={(e) => setExtTitulo(e.target.value)} maxLength={80} className={claseInput} />
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <Boton variante="secundario" onClick={() => setExtModal(null)}>
+                Cancelar
+              </Boton>
+              <Boton
+                icono={<FastForward className="h-4 w-4" />}
+                cargando={extEnviando}
+                disabled={extResolviendo || !extAudioId}
+                onClick={() => void enviarExtension()}
+              >
+                Extender
+              </Boton>
+            </div>
+            <p className="text-center text-[11px] text-neutral-400">
+              Consume créditos como una generación · el modelo es el mismo de la original (
+              {modeloSunoBonito(extModal.modelo)})
+            </p>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

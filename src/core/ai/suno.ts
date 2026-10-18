@@ -25,6 +25,9 @@ export type EstadoPista = 'generando' | 'lista' | 'error'
 /** Una pista generada (Suno devuelve 2 versiones por pedido). */
 export interface PistaSuno {
   taskId: string
+  /** v0.8.0 — id del audio en Suno (item.id de sunoData): lo pide
+   * /generate/extend para continuar ESTA pista en particular. */
+  audioId?: string
   titulo?: string
   urlAudio?: string
   urlPortada?: string
@@ -103,14 +106,23 @@ function pistaDesdeItem(item: Record<string, unknown>, tituloAlternativo?: strin
   const urlAudio = item.audio_url ?? item.musicUrl ?? item.audioUrl ?? item.sunoUrl
   const urlPortada = item.image_url ?? item.imageUrl ?? item.coverUrl
   const duracion = item.duration ?? item.playDuration ?? item.play_duration
+  const audioId = item.id ?? item.audioId
   return {
     taskId: String(item.taskId ?? item.id ?? ''),
+    audioId: typeof audioId === 'string' && audioId ? audioId : undefined,
     titulo: (item.title as string) ?? tituloAlternativo,
     urlAudio: typeof urlAudio === 'string' && urlAudio ? urlAudio : undefined,
     urlPortada: typeof urlPortada === 'string' && urlPortada ? urlPortada : undefined,
     duracionSeg: typeof duracion === 'number' ? duracion : undefined,
     estado: 'generando',
   }
+}
+
+/** Modelos que aceptan el parámetro `duration` en /generate
+ * (docs.sunoapi.org): solo V5_5 y la familia V6. En los viejos
+ * (V4/V4_5/V5) mandarlo puede responder 400 — mejor ni enviarlo. */
+export function modeloSunoSoportaDuracion(modelo: string): boolean {
+  return ['V6', 'V6_MINI', 'V6_WILD', 'V5_5'].includes(modelo)
 }
 
 /**
@@ -146,15 +158,47 @@ export async function consultarCreditos(motor: MotorSuno): Promise<string> {
   return creditos !== null ? `Conectado — te quedan ${creditos} créditos` : 'Conectado ✔ (la API no informó créditos)'
 }
 
+/** Extrae las pistas de la respuesta de un POST de generación
+ * (generate y extend contestan igual: data con taskId, o un array
+ * de items). */
+function pistasDesdeRespuesta(r: RespuestaSuno, tituloAlternativo: string): PistaSuno[] {
+  const d = r.data
+  if (Array.isArray(d)) {
+    const pistas = (d as Array<Record<string, unknown>>).map((i) => pistaDesdeItem(i, tituloAlternativo))
+    if (pistas.length) return pistas
+  } else if (d && typeof d === 'object') {
+    const obj = d as Record<string, unknown>
+    if (obj.taskId || obj.id) return [pistaDesdeItem(obj, tituloAlternativo)]
+  }
+  throw new Error('Suno API: la respuesta no trajo ninguna pista (taskId)')
+}
+
 /**
  * Lanza la generación de una canción (Custom Mode: letra propia
  * + estilo). Devuelve las pistas creadas (normalmente 2 versiones)
  * en estado 'generando', cada una con su taskId para consultar.
+ *
+ * v0.8.0 — `duracionSeg`: Suno ajusta el canto para que la letra
+ * QUEPA entera en esa duración (docs: rango 10–360 s, solo V6/V5_5).
+ * Sin ella, Suno decide solo la longitud… y en letras largas se
+ * queda corto: la canción termina antes de cantar las últimas
+ * estrofas (el bug que arreglamos acá).
  */
 export async function generarMusica(
   motor: MotorSuno,
-  op: { letra: string; estilo: string; titulo: string; instrumental: boolean; modelo: string },
+  op: {
+    letra: string
+    estilo: string
+    titulo: string
+    instrumental: boolean
+    modelo: string
+    duracionSeg?: number
+  },
 ): Promise<PistaSuno[]> {
+  // duration solo vale en customMode y en modelos que lo soportan;
+  // en los otros ni se manda (la API podría rechazar el pedido).
+  const duracion =
+    op.duracionSeg && op.duracionSeg >= 10 && modeloSunoSoportaDuracion(op.modelo) ? op.duracionSeg : undefined
   const r = await pedir(motor, '/api/v1/generate', {
     method: 'POST',
     body: JSON.stringify({
@@ -168,18 +212,97 @@ export async function generarMusica(
       customMode: true,
       instrumental: op.instrumental,
       model: op.modelo,
+      ...(duracion ? { duration: duracion } : {}),
       callBackUrl: CALLBACK_URL,
     }),
   })
-  const d = r.data
-  if (Array.isArray(d)) {
-    const pistas = (d as Array<Record<string, unknown>>).map((i) => pistaDesdeItem(i, op.titulo))
-    if (pistas.length) return pistas
-  } else if (d && typeof d === 'object') {
-    const obj = d as Record<string, unknown>
-    if (obj.taskId || obj.id) return [pistaDesdeItem(obj, op.titulo)]
+  return pistasDesdeRespuesta(r, op.titulo)
+}
+
+/**
+ * v0.8.0 — EXTENDER una pista ya hecha: Suno continúa la canción
+ * desde `continueAt` segundos, cantando la letra que falte en el
+ * MISMO estilo musical (el modelo tiene que ser el mismo de la
+ * original). Es el arreglo para las canciones que se cortaron antes
+ * de terminar la letra: no hay que rehacerla, se completa.
+ * docs.sunoapi.org → POST /api/v1/generate/extend.
+ */
+export async function extenderMusica(
+  motor: MotorSuno,
+  op: {
+    audioId: string
+    taskId?: string
+    continueAt: number
+    letra: string
+    estilo: string
+    titulo: string
+    instrumental: boolean
+    modelo: string
+  },
+): Promise<PistaSuno[]> {
+  const r = await pedir(motor, '/api/v1/generate/extend', {
+    method: 'POST',
+    body: JSON.stringify({
+      audioId: op.audioId,
+      ...(op.taskId ? { taskId: op.taskId } : {}),
+      continueAt: Math.round(op.continueAt),
+      // igual que en generate: la API nueva prioriza lyrics; ambas van
+      lyrics: op.instrumental ? '' : op.letra,
+      prompt: op.instrumental ? '' : op.letra,
+      style: op.estilo,
+      title: op.titulo,
+      instrumental: op.instrumental,
+      // ⚠️ docs: el modelo debe ser el MISMO de la canción original
+      model: op.modelo,
+      callBackUrl: CALLBACK_URL,
+    }),
+  })
+  return pistasDesdeRespuesta(r, op.titulo)
+}
+
+/** Resultado del análisis de la letra sincronizada. */
+export interface LetraConTiempos {
+  /** Cuántas palabras alcanzó a cantar la canción. */
+  palabrasCantadas: number
+  /** Segundo donde terminó el último canto (fin de la última palabra). */
+  finUltimoCanto?: number
+}
+
+/**
+ * v0.8.0 — letra sincronizada de una pista (docs: POST
+ * /api/v1/generate/get-timestamped-lyrics con taskId + audioId).
+ * Devuelve palabra por palabra CON SEGUNDOS: con eso sabemos
+ * EXACTAMENTE hasta dónde llegó a cantar una canción cortada
+ * (palabrasCantadas / finUltimoCanto) para armar la continuación
+ * con lo que faltó. Si la pista no tiene datos (instrumental,
+ * canción vieja, API sin datos) → null, sin lanzar error.
+ */
+export async function consultarLetraConTiempos(
+  motor: MotorSuno,
+  taskId: string,
+  audioId: string,
+): Promise<LetraConTiempos | null> {
+  try {
+    const r = await pedir(motor, '/api/v1/generate/get-timestamped-lyrics', {
+      method: 'POST',
+      body: JSON.stringify({ taskId, audioId }),
+    })
+    const d = r.data as Record<string, unknown> | null
+    const palabras = Array.isArray(d?.alignedWords) ? (d?.alignedWords as Array<Record<string, unknown>>) : []
+    if (!palabras.length) return null
+    let cantadas = 0
+    let fin = 0
+    for (const p of palabras) {
+      if (p.success === false) continue
+      cantadas += 1
+      const endS = typeof p.endS === 'number' ? p.endS : 0
+      if (endS > fin) fin = endS
+    }
+    return { palabrasCantadas: cantadas, finUltimoCanto: fin > 0 ? fin : undefined }
+  } catch {
+    // es un PLUS opcional: si falla, el usuario edita la letra a mano
+    return null
   }
-  throw new Error('Suno API: la respuesta no trajo ninguna pista (taskId)')
 }
 
 /**

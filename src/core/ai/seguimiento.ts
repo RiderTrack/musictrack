@@ -40,6 +40,10 @@ function fusionarPista(x: Cancion, p: PistaSuno): Cancion {
     urlAudio: p.urlAudio ?? x.urlAudio,
     urlPortada: p.urlPortada ?? x.urlPortada,
     duracionSeg: p.duracionSeg ?? x.duracionSeg,
+    // v0.8.0: el audioId del item de sunoData — hace falta para
+    // extender la pista (/generate/extend) y llega recién cuando la
+    // tarea se consulta (el POST inicial solo devuelve taskId).
+    audioId: p.audioId ?? x.audioId,
     titulo: p.titulo || x.titulo,
     error: p.error,
   }
