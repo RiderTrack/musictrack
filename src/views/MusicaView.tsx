@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Disc3, Loader2, Music2, Piano, RefreshCw, Share2, Sparkles, Trash2, Wand2 } from 'lucide-react'
 import { leerAjustes, leer, guardar, borrarClave } from '@/core/storage/almacenamiento'
 import { guardarAudio, leerAudio, borrarAudio } from '@/core/storage/audio'
-import { generarMusica, consultarPista, creditosRestantes, type MotorSuno } from '@/core/ai/suno'
+import { generarMusica, consultarPista, creditosRestantes, type MotorSuno, type PistaSuno } from '@/core/ai/suno'
 import { generarMusicaLyria, armarPromptLyria, type MotorLyria } from '@/core/ai/lyria'
 import { Boton } from '@/components/ui/Boton'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -37,17 +37,43 @@ function formatoDuracion(seg?: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
-/** Mensaje de espera honesto: 1 a 3 min es lo típico, pero en
- * horas pico la cola de Suno (API de terceros) se estira a 10+ min.
- * Muestra cuánto lleva cada canción para que no parezca que la app
- * se colgó — el contador se actualiza solo porque el polling
- * re-renderiza cada 6 segundos. */
-function textoGenerando(fecha: number): string {
+/** Etapa REAL que reporta sunoapi.org para una canción en curso
+ * (v0.4.5). paso: 1 = enviada ✓ · 2 = en cola · 3 = componiendo. */
+function etapaDe(c: Cancion): { texto: string; paso: 1 | 2 | 3 } {
+  if (c.estado === 'lista') return { texto: '¡Lista!', paso: 3 }
+  const crudo = (c.estadoCrudo ?? 'PENDING').toUpperCase()
+  if (crudo.includes('FIRST_SUCCESS')) return { texto: 'Primera versión lista — cocinando la segunda', paso: 3 }
+  if (crudo === 'PENDING') return { texto: 'En cola en Suno (esperando turno)', paso: 2 }
+  return { texto: 'Suno está componiendo 🎙️', paso: 3 } // TEXT_SUCCESS / STREAMING / etc.
+}
+
+/** Minutos desde que se envió el pedido a Suno. */
+function minutosDesde(fecha: number): string {
   const min = Math.floor((Date.now() - fecha) / 60000)
-  if (min < 1) return 'Suno está componiendo… (lo normal: 1 a 3 min)'
-  if (min <= 3) return `Suno está componiendo… (${min} min)`
-  if (min <= 9) return `Suno está componiendo… (${min} min — en horas pico la cola de Suno se demora, tu pedido sigue en camino)`
-  return `Suno está componiendo… (${min} min — si nunca llega, tocá «Quitar de la lista» y probá de nuevo)`
+  return min < 1 ? 'menos de 1 min' : `${min} min`
+}
+
+/** Consejo honesto según la edad de la espera. */
+function hintEdad(fecha: number): string {
+  const min = Math.floor((Date.now() - fecha) / 60000)
+  if (min <= 3) return ''
+  if (min <= 9) return ' — en horas pico la cola se demora'
+  return ' — si falla, Suno devuelve los créditos solos'
+}
+
+/** Mezcla el resultado de un polling en la canción existente
+ * (reutilizado por el ciclo automático y por «Revisar ahora»). */
+function fusionarPista(x: Cancion, p: PistaSuno): Cancion {
+  return {
+    ...x,
+    estado: p.estado,
+    estadoCrudo: p.estadoCrudo,
+    urlAudio: p.urlAudio ?? x.urlAudio,
+    urlPortada: p.urlPortada ?? x.urlPortada,
+    duracionSeg: p.duracionSeg ?? x.duracionSeg,
+    titulo: p.titulo || x.titulo,
+    error: p.error,
+  }
 }
 
 /** Reproductor que resuelve el audio venga de CDN (Suno) o IndexedDB (Lyria). */
@@ -109,6 +135,18 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // ⏱️ Reloj independiente (v0.4.5): re-render cada 10 s para que los
+  // minutos y el semáforo de conexión sigan vivos aunque el polling
+  // falle en silencio (internet lento) — sin esto el contador se congela.
+  const [, setTic] = useState(0)
+  useEffect(() => {
+    const i = window.setInterval(() => setTic((t) => t + 1), 10000)
+    return () => window.clearInterval(i)
+  }, [])
+
+  // 🟢 Marca de la última respuesta exitosa de Suno (semáforo)
+  const [ultimoContacto, setUltimoContacto] = useState<number | null>(null)
+
   // Persistencia de la biblioteca
   useEffect(() => {
     guardar(CLAVE_CANCIONES, canciones)
@@ -145,21 +183,8 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
         try {
           const pista = await consultarPista(motor, c.taskId, c.titulo)
           if (!alVivo.current) return
-          setCanciones((cs) =>
-            cs.map((x) =>
-              x.id === c.id
-                ? {
-                    ...x,
-                    estado: pista.estado,
-                    urlAudio: pista.urlAudio ?? x.urlAudio,
-                    urlPortada: pista.urlPortada ?? x.urlPortada,
-                    duracionSeg: pista.duracionSeg ?? x.duracionSeg,
-                    titulo: pista.titulo || x.titulo,
-                    error: pista.error,
-                  }
-                : x,
-            ),
-          )
+          setUltimoContacto(Date.now())
+          setCanciones((cs) => cs.map((x) => (x.id === c.id ? fusionarPista(x, pista) : x)))
           if (pista.estado === 'lista') {
             vibrar()
             mostrar(`¡«${c.titulo}» lista! 🎧`, 'ok')
@@ -308,6 +333,34 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
     }
   }
 
+  /** Consulta inmediata de una pista, sin esperar al ciclo de 6 s.
+   * Responde con la etapa real: en cola / componiendo / lista. */
+  const [revisandoId, setRevisandoId] = useState<string | null>(null)
+  async function revisarAhora(c: Cancion) {
+    if (!ajustes.tokenSuno || revisandoId) return
+    setRevisandoId(c.id)
+    try {
+      const motor: MotorSuno = { url: ajustes.urlSuno, token: ajustes.tokenSuno }
+      const pista = await consultarPista(motor, c.taskId, c.titulo)
+      setUltimoContacto(Date.now())
+      setCanciones((cs) => cs.map((x) => (x.id === c.id ? fusionarPista(x, pista) : x)))
+      if (pista.estado === 'lista') {
+        vibrar()
+        mostrar(`¡«${c.titulo}» está lista! 🎧`, 'ok')
+        void actualizarCreditos()
+      } else if (pista.estado === 'error') {
+        mostrar(`«${c.titulo}» falló — Suno devuelve los créditos de esa generación`, 'info', 4000)
+        void actualizarCreditos()
+      } else {
+        mostrar(`Sigue en camino: ${etapaDe({ ...c, estadoCrudo: pista.estadoCrudo }).texto.toLowerCase()} ⏳`, 'info', 3500)
+      }
+    } catch (e) {
+      mostrar(e instanceof Error ? e.message : 'No se pudo consultar ahora', 'error', 4000)
+    } finally {
+      setRevisandoId(null)
+    }
+  }
+
   function borrar(id: string) {
     vibrar('media')
     const cancion = canciones.find((c) => c.id === id)
@@ -329,6 +382,9 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
   const claseInput =
     'h-11 w-full rounded-xl border border-neutral-300 bg-transparent px-3 text-sm outline-none transition-colors focus:border-acento dark:border-neutral-700'
   const generando = canciones.filter((c) => c.estado === 'generando').length
+  // Semáforo: hace cuánto que Suno no contesta un polling exitoso
+  const segundosSinRespuesta = ultimoContacto ? Math.max(0, Math.round((Date.now() - ultimoContacto) / 1000)) : null
+  const sunoMudo = generando > 0 && ultimoContacto !== null && (segundosSinRespuesta ?? 0) > 45
   const tokenDelMotor = motor === 'suno' ? ajustes.tokenSuno : ajustes.tokenLyria
   const modeloActual = motor === 'suno' ? `Suno ${(ajustes.modeloSuno ?? 'V4_5').replace('_', '.')}` : (MODELOS_LYRIA.find((m) => m.id === ajustes.modeloLyria)?.etiqueta ?? ajustes.modeloLyria)
   const etiquetaModelo = MODELOS_LYRIA.find((m) => m.id === ajustes.modeloLyria)?.etiqueta.split(' · ')[0] ?? 'Lyria'
@@ -534,6 +590,17 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
           )}
         </div>
 
+        {/* Semáforo de conexión con Suno (v0.4.5) */}
+        {generando > 0 && (
+          <p className={`mb-2 text-[11px] font-semibold ${sunoMudo ? 'text-amber-600 dark:text-amber-400' : 'text-neutral-400'}`}>
+            {ultimoContacto === null
+              ? '🟡 contactando con Suno…'
+              : sunoMudo
+                ? `⚠️ Suno no responde hace ${segundosSinRespuesta}s — puede ser tu conexión; sigo reintentando`
+                : `🟢 consultando Suno cada 6s · última respuesta hace ${segundosSinRespuesta}s`}
+          </p>
+        )}
+
         {canciones.length === 0 ? (
           <EmptyState
             icono={<Disc3 className="h-7 w-7" />}
@@ -576,11 +643,42 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                       {c.instrumental ? ' · instrumental' : ''}
                     </p>
 
-                    {c.estado === 'generando' && (
-                      <p className="mt-2 flex items-center gap-1.5 text-xs text-neutral-400">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> {textoGenerando(c.fecha)}
-                      </p>
-                    )}
+                    {c.estado === 'generando' &&
+                      (() => {
+                        const et = etapaDe(c)
+                        return (
+                          <div className="mt-2">
+                            {/* Barrita de etapas: enviado ✓ → en cola → componiendo */}
+                            <div className="flex items-center gap-1" aria-hidden="true">
+                              {[1, 2, 3].map((p) => (
+                                <span
+                                  key={p}
+                                  className={`h-1.5 flex-1 rounded-full transition-colors ${
+                                    et.paso > p
+                                      ? 'bg-acento'
+                                      : et.paso === p
+                                        ? 'animate-pulse bg-acento'
+                                        : 'bg-neutral-200 dark:bg-neutral-800'
+                                  }`}
+                                />
+                              ))}
+                            </div>
+                            <p className="mt-1.5 flex items-center gap-1.5 text-xs text-neutral-400">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" /> {et.texto} · {minutosDesde(c.fecha)}
+                              {hintEdad(c.fecha)}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => void revisarAhora(c)}
+                              disabled={revisandoId !== null}
+                              className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-neutral-400 transition-colors hover:text-acento disabled:opacity-50"
+                            >
+                              <RefreshCw className={`h-3 w-3 ${revisandoId === c.id ? 'animate-spin' : ''}`} />
+                              {revisandoId === c.id ? 'consultando…' : 'Revisar ahora'}
+                            </button>
+                          </div>
+                        )
+                      })()}
                     {c.estado === 'error' && (
                       <p className="mt-2 text-xs text-red-500">{c.error ?? 'La generación falló — probá de nuevo'}</p>
                     )}

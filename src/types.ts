@@ -135,6 +135,9 @@ export interface Cancion {
   /** true = el MP3 vive en IndexedDB (Lyria), no en una URL CDN (Suno). */
   audioLocal?: boolean
   estado: 'generando' | 'lista' | 'error'
+  /** Estado tal cual lo reporta sunoapi.org (PENDING, TEXT_SUCCESS,
+   * FIRST_SUCCESS…) — alimenta la barrita de etapas de la v0.4.5. */
+  estadoCrudo?: string
   urlAudio?: string
   urlPortada?: string
   duracionSeg?: number

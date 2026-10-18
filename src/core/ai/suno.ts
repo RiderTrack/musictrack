@@ -30,6 +30,8 @@ export interface PistaSuno {
   urlPortada?: string
   duracionSeg?: number
   estado: EstadoPista
+  /** Estado crudo de la API (PENDING, TEXT_SUCCESS, FIRST_SUCCESS…). */
+  estadoCrudo?: string
   error?: string
 }
 
@@ -191,12 +193,16 @@ export async function consultarPista(motor: MotorSuno, taskId: string, tituloAlt
       : []
   const propia = items.find((i) => String(i.taskId ?? i.id ?? '') === taskId) ?? items[0] ?? d
   const pista = pistaDesdeItem({ ...propia, taskId }, tituloAlternativo ?? (propia.title as string))
+  pista.estadoCrudo = estado || undefined
 
-  if (estado.includes('ERROR') || estado.includes('FAILED')) {
+  // Si el audio ya existe, está lista aunque su callback haya fallado
+  // (CALLBACK_EXCEPTION no es culpa nuestra: nosotros usamos polling,
+  // el callBackUrl es solo para satisfacer la validación de la API).
+  if (pista.urlAudio) {
+    pista.estado = 'lista'
+  } else if (estado.includes('ERROR') || estado.includes('FAILED')) {
     pista.estado = 'error'
     pista.error = (d.fail_reason as string) ?? (d.msg as string) ?? estado
-  } else if (pista.urlAudio) {
-    pista.estado = 'lista'
   } else {
     pista.estado = 'generando'
   }
