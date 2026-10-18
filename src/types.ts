@@ -98,6 +98,8 @@ export const GENEROS_MUSICALES = [
   'Tango',
   'Flamenco',
   'K-pop',
+  'J-Rock (anime)',
+  'Balada anime',
   'Electronic / EDM',
 ] as const
 
@@ -143,6 +145,12 @@ export interface Letra {
   /** Voz pensada para cantarla (v0.7.0): 'Masculina', 'Femenina',
    * 'Dúo' — viaja con la letra hasta el estilo de Suno. */
   voz?: string
+  /** v0.9.1 — artistas que INSPIRAN la letra (ej: «Stratovarius,
+   * Luca Turilli»): Claude captura su esencia al escribir (él sí
+   * puede leer los nombres) y al musicalizar su retrato sonoro
+   * se suma al estilo de Suno (que NO acepta nombres — viaja la
+   * esencia, no el nombre). */
+  artistas?: string
   fecha: number
 }
 
@@ -204,6 +212,9 @@ export const ESTILOS_RAPIDOS = [
   'corrido tumbado, requinto, trompetas',
   'synthwave, ochentero, sintetizadores',
   'lo-fi hip hop, relajado, vinilo',
+  // 🇯🇵 v0.9.1 — las dos caras del anime: batalla y balada
+  'j-rock anime, guitarras rápidas, enérgico, épico, 170 bpm',
+  'balada anime, piano, emocional, cuerdas, voz femenina',
 ] as const
 
 /** Etiquetas de UN género para COMBINAR estilos (v0.6.0): tocás
@@ -263,6 +274,22 @@ export const GRUPOS_TAGS_ESTILO: { titulo: string; tags: string[] }[] = [
       'Power metal',
       'Doom metal',
       'Industrial',
+    ],
+  },
+  {
+    // v0.9.1 — pedido del usuario: «esa música japonesa de los
+    // animes, tipo Naruto, tipo Goku» — el j-rock rápido de
+    // batalla y las baladas emocionales de los endings.
+    titulo: '🇯🇵 Anime & J-music',
+    tags: [
+      'J-Rock',
+      'J-Pop',
+      'Anime opening',
+      'Anime rock',
+      'Balada anime',
+      'Anison',
+      'Visual kei',
+      'J-metal',
     ],
   },
   {
@@ -442,6 +469,9 @@ export const GRUPOS_INSTRUMENTOS_ESTILO: { titulo: string; tags: string[] }[] = 
       'Arpa céltica',
       'Cuerno de guerra',
       'Armónica',
+      // 🇯🇵 v0.9.1 — para el sonido de anime
+      'Koto',
+      'Shamisen',
     ],
   },
 ]
@@ -476,6 +506,257 @@ export const TEMPOS_ESTILO = [
   { etiqueta: 'Muy rápida · power', tag: '180 bpm' },
   { etiqueta: 'Extrema · blast', tag: '200 bpm' },
 ] as const
+
+// ═══════════════════════════════════════════════════════════
+// 🎯 v0.9.1 — INSPIRACIÓN POR ARTISTAS. El usuario escribe
+// «Stratovarius, Luca Turilli» y la app captura SU ESENCIA:
+//   • Claude lee los NOMBRES cuando escribe la letra (para él es
+//     texto normal: capta energía, temáticas y actitud — sin
+//     mencionarlos en la letra).
+//   • Suno NO acepta nombres de artistas en el estilo (los
+//     rechaza) — así que el nombre NUNCA viaja ahí: viaja su
+//     RETRATO SONORO, traducido por este diccionario a tags
+//     seguros que Suno entiende y respeta.
+// ═══════════════════════════════════════════════════════════
+
+/** Retratos sonoros de artistas conocidos (tags Suno-safe, sin
+ * nombres). Claves en minúscula y sin acentos — se buscan con
+ * normalizarArtista() para que «Héctor Lavoe» y «hector lavoe»
+ * den lo mismo. */
+export const DICCIONARIO_ARTISTAS: Record<string, string> = {
+  // ⚔️ power / sinfónico / épico / medieval
+  stratovarius: 'neoclassical power metal, melodías rápidas, teclados protagonistas, solos virtuosos',
+  'luca turilli': 'neoclassical power metal, orquesta, arpegios veloces, guitarras sinfónicas',
+  rhapsody: 'symphonic power metal, coros épicos, orquesta, fantasía heroica',
+  'rhapsody of fire': 'symphonic power metal, coros épicos, orquesta, fantasía heroica',
+  dragonforce: 'extreme power metal, guitarras ultrarrápidas, doble bombo constante',
+  helloween: 'power metal clásico, voces agudas, galope, coros cantables',
+  'blind guardian': 'power metal épico, coros masivos, voces en multicapas',
+  nightwish: 'symphonic metal, voz femenina operática, orquesta completa',
+  'within temptation': 'symphonic metal, voz femenina etérea, cuerdas, atmosférico',
+  epica: 'symphonic metal, mezzo-soprano, coros, progresivo',
+  sabaton: 'power metal bélico, coros de guerra, batería marchante',
+  'amon amarth': 'viking melodic death metal, guturales, riffs pesados épicos',
+  alestorm: 'pirate metal, folk, acordeón, coros festivos',
+  eluveitie: 'folk metal celta, gaita, violín, guturales',
+  korpiklaani: 'folk metal festivo, violín, acordeón, canto grupal',
+  'in flames': 'melodic death metal, riffs melódicos, gutural medio',
+  'in extremo': 'medieval metal, gaitas, laúd, ritmo de taberna',
+  'subway to sally': 'medieval metal, violín, guitarras pesadas',
+  'corvus corax': 'música medieval tribal, tambores, gaitas, fiesta antigua',
+  // 🤘 metal / rock clásico y alternativo
+  metallica: 'thrash metal, riffs pesados, solos clásicos',
+  megadeth: 'thrash metal técnico, riffs complejos',
+  'iron maiden': 'heavy metal clásico, bajo galopante, guitarras gemelas',
+  'judas priest': 'heavy metal, voces agudas estridentes',
+  'black sabbath': 'doom metal, riffs lentos y pesados, oscuro',
+  pantera: 'groove metal, riffs groovy, agresivo',
+  rammstein: 'industrial metal, riffs pesados repetitivos, teclados oscuros',
+  slipknot: 'nu metal extremo, percusión caótica, agresivo',
+  'system of a down': 'alternative metal, cambios bruscos, voces tensas',
+  soad: 'alternative metal, cambios bruscos, voces tensas',
+  'linkin park': 'nu metal, rap y voz melódica, electrónica de los 2000',
+  korn: 'nu metal, guitarras graves, oscuro',
+  deftones: 'alternative metal, atmósferas soñadas, suave y pesado',
+  nirvana: 'grunge, riffs simples pegadizos, voz rasposa',
+  'foo fighters': 'rock alternativo, guitarras grandes, coros himno',
+  'green day': 'pop punk, tres acordes rápidos, coros cantables',
+  'blink-182': 'pop punk, rápido y melódico, humor',
+  'sum 41': 'pop punk, rápido, toques metaleros',
+  'the offspring': 'punk rock, riff saltarín, noventas',
+  'red hot chili peppers': 'funk rock, bajo slap, groove',
+  radiohead: 'rock experimental, atmosférico, melancólico',
+  coldplay: 'pop rock pianístico, atmósferas grandes',
+  'imagine dragons': 'arena rock, percusión gigante, coros de estadio',
+  paramore: 'pop punk, voz femenina potente',
+  'the killers': 'rock new wave, sintetizadores ochenteros',
+  'arctic monkeys': 'indie rock, guitarra groovy, lírica urbana',
+  'twenty one pilots': 'alternativo, rap, ukulele y electrónica',
+  'my chemical romance': 'emo rock épico, teatral, dramático',
+  'tame impala': 'psicodelia moderna, sintetizadores, groove hipnótico',
+  // 🎤 urbano / latino / tropical
+  'bad bunny': 'reggaetón moderno, perreo, bajo profundo',
+  'daddy yankee': 'reggaetón clásico, perreo de la vieja escuela',
+  'j balvin': 'reggaetón pop, brillante, bailable',
+  'karol g': 'reggaetón femenino, dulce y duro a la vez',
+  ozuna: 'trap romántico, melodioso',
+  maluma: 'pop urbano, seductor',
+  'don omar': 'reggaetón clásico, himnos de fiesta',
+  'anuel aa': 'trap latino, oscuro, realismo urbano',
+  'marc anthony': 'salsa romántica, voz potente, swing',
+  'celia cruz': 'salsa dura, fuego caribeño, guaracha',
+  'hector lavoe': 'salsa dura, soneros, trompetas',
+  'ruben blades': 'salsa de autor, storytelling del barrio',
+  'grupo niche': 'salsa colombiana, brillosa, swing tropical',
+  'jerry rivera': 'salsa romántica juvenil, suave',
+  'frankie ruiz': 'salsa romántica, energía de fiesta',
+  'willie colon': 'salsa dura, trombones, sabor de barrio',
+  aventura: 'bachata moderna, romántica, cuatro y güira',
+  'romeo santos': 'bachata pop, voz de tenor, festivalera',
+  'prince royce': 'bachata suave, juvenil',
+  'luis miguel': 'balada romántica, voz de terciopelo, orquesta',
+  'juan gabriel': 'balada mexicana, dramática, voz desgarrada',
+  'jose jose': 'balada trágica, voz elegante, orquestal',
+  'marco antonio solis': 'balada grupera, sentimental',
+  'vicente fernandez': 'ranchera, voz de pecho, mariachi completo',
+  'pedro infante': 'ranchera clásica, charro de oro',
+  'peso pluma': 'corrido tumbado, requinto suave, sierreño',
+  'los tigres del norte': 'corrido clásico, polka norteña',
+  'soda stereo': 'rock en español, guitarra atmosférica, ochentas',
+  'heroes del silencio': 'rock en español épico, muro de guitarras',
+  mana: 'pop rock latino, coros gigantes',
+  caifanes: 'rock latino oscuro, gótico tropical',
+  'enanitos verdes': 'rock en español melodioso',
+  santana: 'latin rock, solos de guitarra latinos, percusión',
+  rosalia: 'flamenco urbano, palmas, producción moderna',
+  'camaron de la isla': 'flamenco puro, compás, voz quebrada',
+  'paco de lucia': 'flamenco instrumental, guitarra maestra',
+  'buena vista social club': 'son cubano, guitarra dulce, trompeta vieja escuela',
+  shakira: 'pop latino con rock, fusión andina, voz única',
+  juanes: 'rock latino, guitarra folclórica',
+  'carlos vives': 'vallenato pop, alegre, acordeón',
+  'diomedes diaz': 'vallenato clásico, acordeón de pueblo',
+  'silvestre dangond': 'vallenato nuevo, fiesta',
+  'los mirlos': 'cumbia amazónica, guitarras psicodélicas',
+  'sonora dinamita': 'cumbia tropical clásica, fiesta',
+  'juan luis guerra': 'bachata y merengue poéticos, elegantes',
+  'elvis crespo': 'merengue rápido, güira y tambora, fiesta',
+  'olga tañon': 'merengue femenino, potente',
+  'los kjarkas': 'saya y huayno, charango y quena',
+  'inti illimani': 'andino instrumental, quena, charango, vientos',
+  'victor jara': 'canción latinoamericana de autor, guitarra y sentimiento',
+  // 🇯🇵 anime & j-music (lo que pidió el usuario)
+  radwimps: 'j-rock cinematográfico, emocional, dinámico',
+  'asian kung-fu generation': 'j-rock de anime, riffs enérgicos, garage',
+  flow: 'j-rock de anime, rap y melodía, espíritu de batalla',
+  lisa: 'j-rock de anime, voz femenina poderosa, opening épico',
+  'kana-boon': 'j-rock de anime, riff saltarín, energía juvenil',
+  uverworld: 'j-rock de anime, electrónica y banda, épico',
+  'porno graffitti': 'j-rock de anime, groove melódico',
+  'orange range': 'j-pop rock de anime, fiesta, mezcla de géneros',
+  'ikimono-gakari': 'j-pop balada, voz femenina fresca, emocional',
+  aimer: 'balada japonesa oscura, voz rasposa y dulce, piano',
+  yoasobi: 'j-pop literario, piano veloz, storytelling',
+  eve: 'j-pop rock de anime, caótico y pegadizo',
+  'kenshi yonezu': 'j-pop artístico, voz nasal única',
+  'man with a mission': 'j-rock de festival, coros de estadio',
+  'one ok rock': 'j-rock internacional, coros emotivos de estadio',
+  // 🇰🇷 k-pop · 🔊 electrónica · 🎧 r&b / rap / brasil
+  bts: 'k-pop, producción impecable, dinámicas cambiantes',
+  blackpink: 'k-pop femenino, trap y pop, actitud',
+  twice: 'k-pop alegre, colorido, pegadizo',
+  'stray kids': 'k-pop intenso, hip hop, producción audaz',
+  newjeans: 'k-pop suave, r&b juvenil, minimalista',
+  avicii: 'edm melódico, festival, drops emotivos',
+  'david guetta': 'dance pop de festival',
+  'calvin harris': 'edm pop, groove bailable',
+  'daft punk': 'electro house, vocoder, funk',
+  skrillex: 'dubstep agresivo, bass wobble',
+  deadmau5: 'progressive house, progresión larga',
+  eminem: 'rap técnico, flow rápido, storytelling',
+  'kendrick lamar': 'rap consciente, jazz hop, flow versátil',
+  residente: 'rap latino, wordplay complejo, rima densa',
+  canserbero: 'rap latino concienzudo, oscuro, lírica filosófica',
+  'the weeknd': 'r&b oscuro sintético, noches de ciudad',
+  'frank ocean': 'r&b alternativo, atmosférico, íntimo',
+  sza: 'r&b aireado, voz suave, groove lento',
+  usher: 'r&b de club, dance, voz ágil',
+  'gusttavo lima': 'sertanejo universitário, fiesta',
+  'marilia mendonca': 'sertanejo femenino, dolor de bar, fiesta llorada',
+  'luan santana': 'sertanejo pop, romántico bailable',
+  'joao gilberto': 'bossa nova íntima, voz suave, guitarra sutil',
+  'tom jobim': 'bossa nova clásica, jazz brasileño',
+  'elis regina': 'voz brasileña luminosa, swing',
+  'carlos gardel': 'tango clásico, orquesta típica',
+  'astor piazzolla': 'tango nuevo, bandoneón virtuoso',
+}
+
+/** Sugerencias de artistas por género (los chips de Crear):
+ * nombres que Claude conoce bien y el diccionario sabe retratar.
+ * El usuario puede escribir cualquier OTRO artista a mano. */
+export const ARTISTAS_REFERENCIA: Record<string, string[]> = {
+  'Pop latino': ['Shakira', 'Juanes', 'Carlos Vives', 'Luis Miguel', 'Rosalía', 'Karol G', 'Maluma'],
+  'Balada romántica': ['Luis Miguel', 'Juan Gabriel', 'José José', 'Marco Antonio Solís', 'Romeo Santos', 'Aimer'],
+  Reggaetón: ['Bad Bunny', 'Daddy Yankee', 'J Balvin', 'Karol G', 'Don Omar', 'Ozuna'],
+  'Trap latino': ['Ozuna', 'Anuel AA', 'Bad Bunny'],
+  Cumbia: ['Los Mirlos', 'Sonora Dinamita'],
+  Salsa: ['Marc Anthony', 'Celia Cruz', 'Héctor Lavoe', 'Rubén Blades', 'Grupo Niche', 'Willie Colón', 'Frankie Ruiz', 'Jerry Rivera'],
+  Vallenato: ['Carlos Vives', 'Diomedes Díaz', 'Silvestre Dangond'],
+  Bachata: ['Aventura', 'Romeo Santos', 'Prince Royce'],
+  Merengue: ['Elvis Crespo', 'Olga Tañón', 'Juan Luis Guerra'],
+  'Corrido / Regional mexicano': ['Vicente Fernández', 'Pedro Infante', 'Peso Pluma', 'Los Tigres del Norte'],
+  'Rock en español': ['Soda Stereo', 'Héroes del Silencio', 'Maná', 'Caifanes', 'Enanitos Verdes', 'Santana'],
+  Rock: ['Foo Fighters', 'Nirvana', 'Red Hot Chili Peppers', 'Arctic Monkeys', 'The Killers', 'Coldplay', 'Imagine Dragons'],
+  'Nu metal': ['Linkin Park', 'Korn', 'Deftones', 'System of a Down', 'Slipknot', 'Rammstein'],
+  'Metal / Punk': ['Metallica', 'Iron Maiden', 'Black Sabbath', 'Megadeth', 'Green Day', 'The Offspring'],
+  'Power metal': ['Stratovarius', 'Luca Turilli', 'Rhapsody', 'DragonForce', 'Helloween', 'Blind Guardian', 'Sabaton'],
+  'Metal sinfónico': ['Nightwish', 'Within Temptation', 'Epica', 'Rhapsody'],
+  'Metal medieval': ['In Extremo', 'Subway to Sally', 'Corvus Corax', 'Rhapsody'],
+  'Folk metal': ['Eluveitie', 'Korpiklaani', 'Alestorm', 'Amon Amarth'],
+  'Pop rock': ['Coldplay', 'Paramore', 'Imagine Dragons', 'The Killers', 'Maná'],
+  'Indie / Alternativo': ['Arctic Monkeys', 'Radiohead', 'Twenty One Pilots', 'Tame Impala', 'My Chemical Romance'],
+  'Hip-hop / Rap': ['Eminem', 'Kendrick Lamar', 'Residente', 'Canserbero'],
+  'R&B': ['The Weeknd', 'Frank Ocean', 'SZA', 'Usher'],
+  'Folclore andino': ['Los Kjarkas', 'Inti-Illimani', 'Víctor Jara'],
+  Sertanejo: ['Gusttavo Lima', 'Marília Mendonça', 'Luan Santana'],
+  'Bossa nova': ['João Gilberto', 'Tom Jobim', 'Elis Regina'],
+  Tango: ['Carlos Gardel', 'Astor Piazzolla'],
+  Flamenco: ['Rosalía', 'Camarón de la Isla', 'Paco de Lucía'],
+  'K-pop': ['BTS', 'BLACKPINK', 'TWICE', 'Stray Kids', 'NewJeans'],
+  'J-Rock (anime)': ['Radwimps', 'Asian Kung-Fu Generation', 'FLOW', 'LiSA', 'KANA-BOON', 'Uverworld', 'Porno Graffitti', 'MAN WITH A MISSION', 'ONE OK ROCK'],
+  'Balada anime': ['Aimer', 'YOASOBI', 'Ikimono-gakari', 'Eve', 'Kenshi Yonezu', 'Radwimps'],
+  'Electronic / EDM': ['Avicii', 'David Guetta', 'Calvin Harris', 'Daft Punk', 'Skrillex', 'deadmau5'],
+}
+
+/** Clave de búsqueda de un artista: minúsculas y sin acentos
+ * (así «Héctor Lavoe», «hector lavoe» y «HECTOR LAVOE» matchean). */
+export function normalizarArtista(nombre: string): string {
+  return nombre
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/** El retrato sonoro de UN artista (undefined si no lo conozco). */
+export function retratoDeArtista(nombre: string): string | undefined {
+  return DICCIONARIO_ARTISTAS[normalizarArtista(nombre)]
+}
+
+/** Tags de estilo que capturan la esencia de los artistas
+ * escritos (separados por comas), sin repetir y con tope — entra
+ * lo que el estilo de Suno (200 caracteres) acepte razonablemente. */
+export function descriptoresDeArtistas(artistas: string): string[] {
+  const salida: string[] = []
+  for (const nombre of artistas.split(',')) {
+    const retrato = retratoDeArtista(nombre)
+    if (!retrato) continue
+    for (const tag of retrato.split(',').map((t) => t.trim()).filter(Boolean)) {
+      if (!salida.includes(tag)) salida.push(tag)
+    }
+  }
+  return salida.slice(0, 8)
+}
+
+/** Suma la esencia de los artistas a un estilo existente: sin
+ * repetir tags y sin pasarse del tope de 200 caracteres de Suno.
+ * Devuelve el estilo final y qué se agregó (para avisarle al
+ * usuario con un toast, no en silencio). */
+export function estiloConInspiracion(estilo: string, artistas?: string): { estilo: string; agregados: string[] } {
+  if (!artistas?.trim()) return { estilo, agregados: [] }
+  const partes = estilo
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean)
+  const agregados: string[] = []
+  for (const tag of descriptoresDeArtistas(artistas)) {
+    if (partes.some((p) => p.toLowerCase() === tag.toLowerCase()) || agregados.includes(tag)) continue
+    if ([...partes, ...agregados, tag].join(', ').length > 200) break
+    agregados.push(tag)
+  }
+  return { estilo: [...partes, ...agregados].join(', '), agregados }
+}
 
 /** Una canción generada con Suno o Lyria a partir de una letra. */
 export interface Cancion {

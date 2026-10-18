@@ -8,6 +8,7 @@ import { CuerpoLetra } from '@/components/ui/CuerpoLetra'
 import { useToast } from '@/components/ui/Toast'
 import { compartir, vibrar, abrirURL, copiarTexto } from '@/core/natives/plataforma'
 import {
+  ARTISTAS_REFERENCIA,
   ESTRUCTURAS,
   GENEROS_MUSICALES,
   IDIOMAS,
@@ -47,6 +48,22 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
   const [mood, setMood] = useState<string>(MOODS[1])
   const [estructura, setEstructura] = useState<string>('estandar')
   const [voz, setVoz] = useState<string>(VOZ_CANTANTE[0])
+  // 🎯 v0.9.1 — INSPIRACIÓN POR ARTISTAS (pedido del usuario):
+  // «inspírate en Stratovarius o Luca Turilli». Texto libre con
+  // chips de sugerencia según el género elegido. Claude lee los
+  // NOMBRES al escribir; Suno recibe el retrato sonoro (ver
+  // MusicaView / DICCIONARIO_ARTISTAS).
+  const [artistas, setArtistas] = useState('')
+  const artistasLista = artistas
+    .split(',')
+    .map((a) => a.trim())
+    .filter(Boolean)
+  function alternarArtista(nombre: string) {
+    vibrar()
+    const i = artistasLista.findIndex((a) => a.toLowerCase() === nombre.toLowerCase())
+    setArtistas((i >= 0 ? artistasLista.filter((_, j) => j !== i) : [...artistasLista, nombre]).join(', '))
+  }
+  const sugerenciasArtistas = ARTISTAS_REFERENCIA[genero] ?? []
   const [letra, setLetra] = useState<Letra | null>(null)
   const [cargando, setCargando] = useState(false)
   const [guardada, setGuardada] = useState(false)
@@ -93,6 +110,7 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
       texto: cuerpo,
       origen: 'ia',
       voz: voz === 'Cualquiera' ? undefined : voz,
+      artistas: artistas.trim() || undefined,
       fecha: Date.now(),
     }
   }
@@ -152,6 +170,9 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
               `Género musical: ${genero}`,
               `Idioma de la letra: ${idioma}`,
               `Emoción general: ${mood}`,
+              artistas.trim()
+                ? `Inspiración musical — artistas de referencia: ${artistas.trim()}. Capturá SU ESENCIA (energía, temáticas, actitud, forma de escribir) pero NO los menciones ni escribas sus nombres en la letra.`
+                : '',
               voz === 'Cualquiera' ? '' : `Voz del intérprete: ${voz.toLowerCase()} — escribí la letra pensando en esa voz`,
               voz === 'Dúo'
                 ? 'Es un DUETO: alterná secciones entre voz masculina y femenina, etiquetándolas [Voz hombre] o [Voz mujer] al inicio de cada sección'
@@ -378,6 +399,56 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
             </div>
           </div>
 
+          {/* 🎯 v0.9.1 — INSPIRACIÓN POR ARTISTAS: escribí o tocá
+              artistas y Claude captura su esencia al escribir. Al
+              musicalizar, su retrato sonoro se suma al estilo de
+              Suno (los nombres NUNCA van a Suno — no los acepta). */}
+          <div>
+            <span className="mb-1.5 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+              🎯 Inspiración de artistas <span className="font-normal text-neutral-400">(opcional)</span>
+            </span>
+            <input
+              value={artistas}
+              onChange={(e) => setArtistas(e.target.value)}
+              maxLength={120}
+              placeholder="Ej: Stratovarius, Luca Turilli, LiSA…"
+              className={claseInput}
+            />
+            {sugerenciasArtistas.length > 0 && (
+              <div className="mt-1.5 flex flex-wrap gap-2">
+                {sugerenciasArtistas.map((a) => {
+                  const activo = artistasLista.some((x) => x.toLowerCase() === a.toLowerCase())
+                  return (
+                    <button
+                      key={a}
+                      type="button"
+                      onClick={() => alternarArtista(a)}
+                      aria-pressed={activo}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                        activo
+                          ? 'border-acento bg-acento text-white'
+                          : 'border-neutral-300 bg-transparent text-neutral-500 hover:border-acento/60 dark:border-neutral-700 dark:text-neutral-400'
+                      }`}
+                    >
+                      {activo ? `✓ ${a}` : a}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            {artistas.trim() ? (
+              <p className="mt-1 text-[10px] leading-relaxed text-neutral-400">
+                Claude toma su esencia al escribir la letra (sin nombrarlos) y al musicalizar su sonido se suma al estilo
+                de Suno — el nombre nunca viaja a Suno porque no lo acepta: viaja su esencia traducida.
+              </p>
+            ) : (
+              <p className="mt-1 text-[10px] leading-relaxed text-neutral-400">
+                Tocá artistas del género o escribí los que quieras — por ejemplo, en power metal: Stratovarius o Luca
+                Turilli.
+              </p>
+            )}
+          </div>
+
           {/* 🎤 Voz del intérprete (v0.7.0): Claude escribe la letra
               pensando en esa voz, y viaja con ella hasta Suno. */}
           <div>
@@ -500,6 +571,14 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
             {letra.voz && (
               <span className="rounded-full bg-neutral-200 px-2 py-0.5 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
                 🎤 voz {letra.voz.toLowerCase()}
+              </span>
+            )}
+            {letra.artistas && (
+              <span
+                className="max-w-full truncate rounded-full bg-acento/15 px-2 py-0.5 text-acento"
+                title={`Inspirada en ${letra.artistas}`}
+              >
+                🎯 {letra.artistas}
               </span>
             )}
           </div>

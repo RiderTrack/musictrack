@@ -6,6 +6,7 @@ import {
   Link2,
   Loader2,
   Music2,
+  PenLine,
   RefreshCw,
   Rocket,
   Search,
@@ -33,7 +34,14 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
 import { compartir, vibrar, abrirURL, copiarTexto } from '@/core/natives/plataforma'
-import { modeloSunoBonito, type Cancion, type Letra, type PestannaId } from '@/types'
+import {
+  GENEROS_MUSICALES,
+  GRUPOS_TAGS_ESTILO,
+  modeloSunoBonito,
+  type Cancion,
+  type Letra,
+  type PestannaId,
+} from '@/types'
 
 // ═══════════════════════════════════════════════════════════
 // 📚 BIBLIOTECA (v0.9.0) — la casa de TODAS las canciones. El
@@ -93,6 +101,39 @@ function hintEdad(fecha: number): string {
   if (min <= 3) return ''
   if (min <= 9) return ' — en horas pico la cola se demora'
   return ' — si falla, Suno devuelve los créditos solos'
+}
+
+// ═══════════════════════════════════════════════════════════
+// 📁 v0.9.1 — CARPETAS POR ESTILO (pedido del usuario): «que se
+// ordenen, todo lo que es power metal en una carpetita… y de ahí
+// otra carpeta por ejemplo salsa». El género de cada canción sale
+// de su estilo: el primer tag que sea un género conocido; si no
+// hay ninguno, el primer tag; sin estilo → «Sin estilo».
+// ═══════════════════════════════════════════════════════════
+const GENEROS_PARA_CARPETA = new Set(
+  [...GRUPOS_TAGS_ESTILO.flatMap((g) => g.tags), ...GENEROS_MUSICALES].map((t) => t.toLowerCase()),
+)
+
+/** La carpeta de una canción según su estilo. */
+function carpetaDe(c: Cancion): string {
+  const partes = c.estilo
+    .toLowerCase()
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean)
+  for (const p of partes) {
+    if (GENEROS_PARA_CARPETA.has(p)) return p
+    // sin acentos: «reggaetón» escrito «reggaeton» también matchea
+    const sinAcentos = p.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    if (GENEROS_PARA_CARPETA.has(sinAcentos)) return sinAcentos
+  }
+  return partes[0] ?? 'sin estilo'
+}
+
+/** «power metal» → «Power Metal» (para el título de la carpeta). */
+function carpetaBonita(nombre: string): string {
+  if (nombre === 'sin estilo') return 'Sin estilo'
+  return nombre.replace(/(^|[\s\-·])([a-záéíóúñ])/g, (_m, sep: string, ch: string) => sep + ch.toUpperCase())
 }
 
 /** v0.8.0 — la parte de la letra que QUEDÓ SIN CANTARSE sabiendo
@@ -172,10 +213,30 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
 
   const [canciones, setCanciones] = useState<Cancion[]>(() => leerCanciones())
   const [busqueda, setBusqueda] = useState('')
+  // ✏️ v0.9.1 — EDITAR EL TÍTULO (pedido del usuario: «cuando ya
+  // la canción esté terminada puede editar el título»): al
+  // confirmar, actualizarCancion avisa a toda la app sola.
+  const [renombrando, setRenombrando] = useState<{ id: string; valor: string } | null>(null)
 
   // 🔎 filtro por título o estilo
   const q = busqueda.trim().toLowerCase()
   const visibles = q ? canciones.filter((c) => `${c.titulo} ${c.estilo}`.toLowerCase().includes(q)) : canciones
+
+  // 📁 v0.9.1 — el agrupamiento de la biblioteca: las «en curso»
+  // van sueltas arriba (son transitorias) y las terminadas en
+  // CARPETAS por estilo, ordenadas por su canción más reciente.
+  const enCurso = visibles.filter((c) => c.estado !== 'lista')
+  const carpetasOrdenadas = (() => {
+    const m = new Map<string, Cancion[]>()
+    for (const c of visibles) {
+      if (c.estado !== 'lista') continue
+      const clave = carpetaDe(c)
+      m.set(clave, [...(m.get(clave) ?? []), c])
+    }
+    return [...m.entries()].sort(
+      (a, b) => Math.max(...b[1].map((x) => x.fecha)) - Math.max(...a[1].map((x) => x.fecha)),
+    )
+  })()
 
   // ⏱️ Reloj independiente (v0.4.5): re-render cada 10 s para que los
   // minutos y el semáforo de conexión sigan vivos aunque el polling
@@ -623,79 +684,27 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
   const sunoMudo = generando > 0 && ultimoContacto !== null && (segundosSinRespuesta ?? 0) > 45
   const hayListas = canciones.some((c) => c.estado === 'lista')
 
-  return (
-    <div className="space-y-4">
-      {/* Encabezado + buscador */}
-      <section aria-label="Biblioteca de canciones">
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-400">
-            {canciones.length} {canciones.length === 1 ? 'canción' : 'canciones'}
-            {generando > 0 && <span className="ml-2 text-acento">· {generando} en el horno</span>}
-          </h3>
-          {canciones.length > 0 && (
-            <button
-              type="button"
-              onClick={() => window.location.reload()}
-              className="flex items-center gap-1 text-xs font-semibold text-neutral-400 hover:text-acento"
-            >
-              <RefreshCw className="h-3.5 w-3.5" /> Refrescar
-            </button>
-          )}
-        </div>
+  // ✏️ v0.9.1 — confirma el renombre de la tarjeta en edición.
+  function confirmarRenombre() {
+    if (!renombrando) return
+    const nuevo = renombrando.valor.trim()
+    const actual = canciones.find((c) => c.id === renombrando.id)
+    if (actual && nuevo && nuevo !== actual.titulo) {
+      actualizarCancion(renombrando.id, { titulo: nuevo })
+      vibrar()
+      mostrar(`Ahora se llama «${nuevo}» ✓`, 'ok')
+    }
+    setRenombrando(null)
+  }
 
-        {canciones.length > 0 && (
-          <div className="relative mb-2">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-            <input
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              placeholder="Buscar por título o estilo…"
-              className="h-11 w-full rounded-xl border border-neutral-300 bg-transparent pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-neutral-400 focus:border-acento dark:border-neutral-700"
-              aria-label="Buscar canciones"
-            />
-          </div>
-        )}
-
-        {/* 💡 el dato bueno: los MP3 salen con la letra adentro */}
-        {hayListas && (
-          <p className="mb-2 rounded-xl bg-acento/10 px-3 py-2 text-[11px] leading-relaxed text-acento">
-            💾 Al tocar <b>MP3</b>, la canción baja con la <b>letra adentro</b> y un archivito <b>.lrc</b> al lado (mismo
-            nombre) — los reproductores como Musicolet o Poweramp los leen solos y te muestran la letra avanzando con la
-            música, como en Spotify 🎼
-          </p>
-        )}
-
-        {/* Semáforo de conexión con Suno (v0.4.5) */}
-        {generando > 0 && (
-          <p className={`mb-2 text-[11px] font-semibold ${sunoMudo ? 'text-amber-600 dark:text-amber-400' : 'text-neutral-400'}`}>
-            {ultimoContacto === null
-              ? '🟡 contactando con Suno…'
-              : sunoMudo
-                ? `⚠️ Suno no responde hace ${segundosSinRespuesta}s — puede ser tu conexión; sigo reintentando`
-                : `🟢 consultando Suno cada 6s · última respuesta hace ${segundosSinRespuesta}s`}
-          </p>
-        )}
-
-        {canciones.length === 0 ? (
-          <EmptyState
-            icono={<Music2 className="h-7 w-7" />}
-            titulo="Tu biblioteca está vacía"
-            descripcion="Las canciones que generés se acumulan acá para siempre: escucharlas, extenderlas, ver su letra y bajarlas como MP3 con la letra adentro. La primera está a un paso: andá a Música, elegí una letra y tocá Generar."
-            accion={<Boton onClick={() => irA('musica')}>Crear mi primera canción</Boton>}
-          />
-        ) : visibles.length === 0 ? (
-          <EmptyState
-            icono={<Search className="h-7 w-7" />}
-            titulo={`Nada con «${busqueda.trim()}»`}
-            descripcion="Probá con otra palabra del título o del estilo — o limpiá el buscador para ver todas."
-          />
-        ) : (
-          <ul className="space-y-2.5">
-            {visibles.map((c) => {
-              // v0.6.4: tarea «generando» con edad de muerta → la tarjeta
-              // cambia de cara (ámbar, sin spinner) y deja de prometer.
-              const muerta = c.estado === 'generando' && c.motor !== 'lyria' && edadMin(c.fecha) >= MIN_TAREA_MUERTA
-              return (
+  /** v0.9.1 — la TARJETA de una canción (antes era el map directo
+   * de la lista): ahora se dibuja en «En curso» y adentro de cada
+   * CARPETA de estilo. Novedad: el título se puede EDITAR (✏️). */
+  function renderTarjeta(c: Cancion) {
+    // v0.6.4: tarea «generando» con edad de muerta → la tarjeta
+    // cambia de cara (ámbar, sin spinner) y deja de prometer.
+    const muerta = c.estado === 'generando' && c.motor !== 'lyria' && edadMin(c.fecha) >= MIN_TAREA_MUERTA
+    return (
               <li
                 key={c.id}
                 className={`rounded-2xl border p-4 ${
@@ -718,7 +727,57 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
                   )}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="min-w-0 truncate font-semibold text-neutral-900 dark:text-white">{c.titulo}</p>
+                      <div className="flex min-w-0 items-center gap-1">
+                        {renombrando?.id === c.id ? (
+                          <>
+                            <input
+                              autoFocus
+                              value={renombrando.valor}
+                              onChange={(e) => setRenombrando({ id: c.id, valor: e.target.value })}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') confirmarRenombre()
+                                if (e.key === 'Escape') setRenombrando(null)
+                              }}
+                              maxLength={80}
+                              aria-label="Nuevo título"
+                              className="h-8 min-w-0 flex-1 rounded-lg border border-acento bg-transparent px-2 text-sm font-semibold text-neutral-900 outline-none dark:text-white"
+                            />
+                            <button
+                              type="button"
+                              onClick={confirmarRenombre}
+                              title="Guardar el nuevo título"
+                              className="shrink-0 rounded-lg bg-emerald-500/15 px-2 py-0.5 font-bold text-emerald-600 transition-colors hover:bg-emerald-500/25 dark:text-emerald-400"
+                            >
+                              ✓
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setRenombrando(null)}
+                              title="Cancelar"
+                              className="shrink-0 rounded-lg px-2 py-0.5 font-bold text-neutral-400 transition-colors hover:text-neutral-700 dark:hover:text-neutral-200"
+                            >
+                              ✕
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <p className="min-w-0 truncate font-semibold text-neutral-900 dark:text-white">{c.titulo}</p>
+                            {/* ✏️ v0.9.1 — editar el título: funciona en
+                                cualquier tarjeta, lista o en curso */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                vibrar('ligera')
+                                setRenombrando({ id: c.id, valor: c.titulo })
+                              }}
+                              title="Editar el título"
+                              className="shrink-0 rounded-md p-0.5 text-neutral-400 transition-colors hover:text-acento"
+                            >
+                              <PenLine className="h-3.5 w-3.5" />
+                            </button>
+                          </>
+                        )}
+                      </div>
                       {c.version && (
                         <span className="shrink-0 rounded-full bg-acento/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-acento">
                           Versión {c.version}
@@ -739,9 +798,14 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
                       </span>
                     </div>
                     <p className="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400">
-                      {c.motor === 'lyria' ? '🎹 Lyria' : c.continuacionDe ? '⏩ continuación' : '🎵 Suno'} · {c.estilo}
-                      {c.duracionSeg ? ` · ${formatoDuracion(c.duracionSeg)}` : ''}
-                      {c.instrumental ? ' · instrumental' : ''}
+                      {[
+                        c.motor === 'lyria' ? '🎹 Lyria' : c.continuacionDe ? '⏩ continuación' : '🎵 Suno',
+                        c.estilo,
+                        c.duracionSeg ? formatoDuracion(c.duracionSeg) : '',
+                        c.instrumental ? 'instrumental' : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
                     </p>
 
                     {c.estado === 'generando' &&
@@ -885,9 +949,126 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
                   </Boton>
                 )}
               </li>
-              )
-            })}
-          </ul>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Encabezado + buscador */}
+      <section aria-label="Biblioteca de canciones">
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-400">
+            {canciones.length} {canciones.length === 1 ? 'canción' : 'canciones'}
+            {generando > 0 && <span className="ml-2 text-acento">· {generando} en el horno</span>}
+          </h3>
+          {canciones.length > 0 && (
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="flex items-center gap-1 text-xs font-semibold text-neutral-400 hover:text-acento"
+            >
+              <RefreshCw className="h-3.5 w-3.5" /> Refrescar
+            </button>
+          )}
+        </div>
+
+        {canciones.length > 0 && (
+          <div className="relative mb-2">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+            <input
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              placeholder="Buscar por título o estilo…"
+              className="h-11 w-full rounded-xl border border-neutral-300 bg-transparent pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-neutral-400 focus:border-acento dark:border-neutral-700"
+              aria-label="Buscar canciones"
+            />
+          </div>
+        )}
+
+        {/* 💡 el dato bueno: los MP3 salen con la letra adentro */}
+        {hayListas && (
+          <p className="mb-2 rounded-xl bg-acento/10 px-3 py-2 text-[11px] leading-relaxed text-acento">
+            💾 Al tocar <b>MP3</b>, la canción baja con la <b>letra adentro</b> y un archivito <b>.lrc</b> al lado (mismo
+            nombre) — los reproductores como Musicolet o Poweramp los leen solos y te muestran la letra avanzando con la
+            música, como en Spotify 🎼
+          </p>
+        )}
+
+        {/* Semáforo de conexión con Suno (v0.4.5) */}
+        {generando > 0 && (
+          <p className={`mb-2 text-[11px] font-semibold ${sunoMudo ? 'text-amber-600 dark:text-amber-400' : 'text-neutral-400'}`}>
+            {ultimoContacto === null
+              ? '🟡 contactando con Suno…'
+              : sunoMudo
+                ? `⚠️ Suno no responde hace ${segundosSinRespuesta}s — puede ser tu conexión; sigo reintentando`
+                : `🟢 consultando Suno cada 6s · última respuesta hace ${segundosSinRespuesta}s`}
+          </p>
+        )}
+
+        {canciones.length === 0 ? (
+          <EmptyState
+            icono={<Music2 className="h-7 w-7" />}
+            titulo="Tu biblioteca está vacía"
+            descripcion="Las canciones que generés se acumulan acá para siempre: escucharlas, extenderlas, ver su letra y bajarlas como MP3 con la letra adentro. La primera está a un paso: andá a Música, elegí una letra y tocá Generar."
+            accion={<Boton onClick={() => irA('musica')}>Crear mi primera canción</Boton>}
+          />
+        ) : visibles.length === 0 ? (
+          <EmptyState
+            icono={<Search className="h-7 w-7" />}
+            titulo={`Nada con «${busqueda.trim()}»`}
+            descripcion="Probá con otra palabra del título o del estilo — o limpiá el buscador para ver todas."
+          />
+        ) : (
+          <>
+          {/* ⏳ v0.9.1 — las que se están cocinando (o fallaron) van
+              arriba, sueltas: son transitorias — al quedar listas
+              migran a su carpeta de estilo. */}
+          {enCurso.length > 0 && (
+            <div className="space-y-2.5">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
+                ⏳ En curso · {enCurso.length}
+              </p>
+              <ul className="space-y-2.5">{enCurso.map((c) => renderTarjeta(c))}</ul>
+            </div>
+          )}
+
+          {/* 📁 v0.9.1 — CARPETAS POR ESTILO (pedido del usuario):
+              «todo lo que es power metal en una carpetita… y de ahí
+              otra carpeta por ejemplo salsa». La carpeta con la
+              canción más reciente queda abierta; el buscador filtra
+              adentro de las carpetas igual que antes. */}
+          {carpetasOrdenadas.length > 0 && (
+            <div className="space-y-2">
+              {enCurso.length === 0 && (
+                <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                  📁 En carpetas por estilo — tocá una para abrirla
+                </p>
+              )}
+              {carpetasOrdenadas.map(([nombre, cs], i) => (
+                <details
+                  key={nombre}
+                  open={i === 0}
+                  className="group rounded-2xl border border-neutral-200 bg-neutral-50/60 dark:border-neutral-800 dark:bg-neutral-900/40"
+                >
+                  <summary className="flex cursor-pointer select-none list-none items-center gap-2 px-3 py-2.5 [&::-webkit-details-marker]:hidden">
+                    <span className="truncate text-sm font-bold text-neutral-700 dark:text-neutral-200">
+                      📁 {carpetaBonita(nombre)}
+                    </span>
+                    <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                      <span className="rounded-full bg-acento/15 px-2 py-0.5 text-[10px] font-bold text-acento">
+                        {cs.length} {cs.length === 1 ? 'canción' : 'canciones'}
+                      </span>
+                      <span className="text-neutral-400 transition-transform group-open:rotate-90">▸</span>
+                    </span>
+                  </summary>
+                  <ul className="space-y-2.5 border-t border-neutral-200/70 px-3 py-2.5 dark:border-neutral-800/70">
+                    {cs.map((c) => renderTarjeta(c))}
+                  </ul>
+                </details>
+              ))}
+            </div>
+          )}
+          </>
         )}
       </section>
 

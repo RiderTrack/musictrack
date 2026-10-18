@@ -27,7 +27,10 @@ import {
   PRODUCCION_ESTILO,
   TEMPOS_ESTILO,
   VOZ_CANTANTE,
+  descriptoresDeArtistas,
+  estiloConInspiracion,
   modeloSunoBonito,
+  retratoDeArtista,
   type Cancion,
   type Letra,
   type MotorMusica,
@@ -140,6 +143,16 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
   const [texto, setTexto] = useState('')
   const [titulo, setTitulo] = useState('')
   const [estilo, setEstilo] = useState('')
+  // 🎯 v0.9.1 — artistas que inspiran esta canción: se precargan
+  // con la letra (si Claude la escribió inspirada) y su retrato
+  // sonoro se suma al estilo al generar (Suno no acepta nombres).
+  const [artistas, setArtistas] = useState('')
+  const artistasEscritos = artistas
+    .split(',')
+    .map((a) => a.trim())
+    .filter(Boolean)
+  const esenciaInspiracion = descriptoresDeArtistas(artistas)
+  const sinRetrato = artistasEscritos.filter((a) => !retratoDeArtista(a))
   const [instrumental, setInstrumental] = useState(false)
   const [cargando, setCargando] = useState(false)
 
@@ -202,6 +215,7 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
       setLetraId(letra.id)
       setTexto(letra.texto)
       setTitulo(letra.titulo)
+      setArtistas(letra.artistas ?? '')
       setEstilo(estiloDesdeLetra(letra))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -213,16 +227,20 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
     if (letra) {
       setTexto(letra.texto)
       setTitulo(letra.titulo)
+      setArtistas(letra.artistas ?? '')
       setEstilo(estiloDesdeLetra(letra))
     } else {
       setTexto('')
       setTitulo('')
+      setArtistas('')
       setEstilo('')
     }
   }
 
   /** v0.7.0 — el estilo inicial al llegar una letra de la
-   * biblioteca: género + mood + voz (si la letra la definió). */
+   * biblioteca: género + mood + voz (si la letra la definió).
+   * v0.9.1 — y la ESENCIA de los artistas que la inspiraron
+   * (retrato sonoro del diccionario, no sus nombres). */
   function estiloDesdeLetra(letra: Letra): string {
     const vozTag =
       letra.voz === 'Masculina'
@@ -232,7 +250,8 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
           : letra.voz === 'Dúo'
             ? 'dúo de voces'
             : ''
-    return [letra.genero, letra.mood, vozTag].filter(Boolean).join(', ').toLowerCase()
+    const base = [letra.genero, letra.mood, vozTag].filter(Boolean).join(', ').toLowerCase()
+    return estiloConInspiracion(base, letra.artistas).estilo
   }
 
   // 🎛️ v0.6.0 — COMBINAR estilos: cada etiqueta tocada se suma
@@ -361,7 +380,19 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
       return
     }
     const tituloLimpio = titulo.trim() || 'Mi canción'
-    const estiloLimpio = estilo.trim() || 'pop latino'
+    // 🎯 v0.9.1 — la esencia de los artistas se suma al estilo
+    // (tope 200 chars de Suno, sin repetir tags) y se avisa.
+    const inspirada = estiloConInspiracion(estilo.trim() || 'pop latino', artistas)
+    const estiloLimpio = inspirada.estilo
+    if (inspirada.agregados.length) {
+      mostrar(
+        `🎯 Sumé la esencia de tu inspiración al estilo (${inspirada.agregados.length} ${
+          inspirada.agregados.length === 1 ? 'toque' : 'toques'
+        }) — los nombres no van a Suno, va su esencia`,
+        'info',
+        5000,
+      )
+    }
     // 🩹 v0.8.1 — Suno rechaza letras de más de 5.000 caracteres.
     // v0.9.0 — antes de recortar se LIMPIA el espacio de más
     // (espacios dobles, líneas con aire, 3+ saltos): varias letras
@@ -444,7 +475,18 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
       return
     }
     const tituloLimpio = titulo.trim() || 'Mi canción'
-    const estiloLimpio = estilo.trim() || 'pop latino'
+    // 🎯 v0.9.1 — misma inspiración para Lyria (va en el prompt)
+    const inspirada = estiloConInspiracion(estilo.trim() || 'pop latino', artistas)
+    const estiloLimpio = inspirada.estilo
+    if (inspirada.agregados.length) {
+      mostrar(
+        `🎯 Sumé la esencia de tu inspiración al estilo (${inspirada.agregados.length} ${
+          inspirada.agregados.length === 1 ? 'toque' : 'toques'
+        })`,
+        'info',
+        4500,
+      )
+    }
     vibrar()
     setCargando(true)
     try {
@@ -624,6 +666,39 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                 <input value={modeloActual} readOnly className={`${claseInput} opacity-60`} />
               </label>
             </div>
+
+            {/* 🎯 v0.9.1 — INSPIRACIÓN POR ARTISTAS: su ESENCIA se
+                suma al estilo al generar (Suno no acepta nombres —
+                viaja el retrato sonoro traducido del diccionario). */}
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+                🎯 Inspiración de artistas <span className="font-normal text-neutral-400">(opcional)</span>
+              </span>
+              <input
+                value={artistas}
+                onChange={(e) => setArtistas(e.target.value)}
+                maxLength={120}
+                placeholder="Ej: Stratovarius, Luca Turilli, LiSA…"
+                className={claseInput}
+              />
+              {artistasEscritos.length > 0 && (
+                <span className="mt-1 block text-[11px] leading-relaxed">
+                  {esenciaInspiracion.length > 0 && (
+                    <span className="block text-emerald-600 dark:text-emerald-400">
+                      ✓ Su esencia va al estilo: <b>{esenciaInspiracion.slice(0, 5).join(' · ')}</b>
+                      {esenciaInspiracion.length > 5 ? '…' : ''}
+                    </span>
+                  )}
+                  {sinRetrato.length > 0 && (
+                    <span className="block text-neutral-400">
+                      A {sinRetrato.join(', ')} no lo{sinRetrato.length === 1 ? '' : 's'} tengo retratado{sinRetrato.length === 1 ? '' : 's'} —
+                      igual probá: si la letra vino de Crear, Claude ya tomó su esencia; o describí su sonido a mano en el
+                      estilo.
+                    </span>
+                  )}
+                </span>
+              )}
+            </label>
 
             <div>
               <span className="mb-1 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">
