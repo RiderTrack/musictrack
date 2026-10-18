@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bell, Cpu, Disc3, Download, ListMusic, Music2, Smartphone, User, Wand2, X } from 'lucide-react'
+import { Bell, Cpu, Disc3, Download, Library, ListMusic, Music2, Smartphone, User, Wand2, X } from 'lucide-react'
 import { APP } from '@/data/app'
 import { KPI } from '@/components/ui/KPI'
 import { Boton } from '@/components/ui/Boton'
@@ -154,7 +154,7 @@ export function DashboardView({ irA }: { irA: (p: PestannaId) => void }) {
               ? 'el motor doble las crea'
               : canciones.some((c) => c.estado === 'generando')
                 ? `${canciones.filter((c) => c.estado === 'generando').length} generándose…`
-                : 'todas listas'
+                : 'todas en la Biblioteca 📚'
           }
         />
         <KPI
@@ -183,6 +183,9 @@ export function DashboardView({ irA }: { irA: (p: PestannaId) => void }) {
           </Boton>
           <Boton variante="secundario" icono={<ListMusic className="h-4 w-4" />} onClick={() => irA('letras')}>
             Mis letras
+          </Boton>
+          <Boton variante="secundario" icono={<Library className="h-4 w-4" />} onClick={() => irA('biblioteca')}>
+            Mi biblioteca
           </Boton>
           <Boton variante="secundario" icono={<Bell className="h-4 w-4" />} onClick={probarNotificacion}>
             Notificación

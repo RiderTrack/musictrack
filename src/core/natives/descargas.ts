@@ -1,4 +1,4 @@
-import { Filesystem, Directory } from '@capacitor/filesystem'
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem'
 import { esNativo } from './plataforma'
 
 // ═══════════════════════════════════════════════════════════
@@ -27,12 +27,25 @@ export function sanearCarpeta(carpeta: string): string {
 
 /** Nombre de archivo seguro para el MP3 que se descarga. */
 export function nombreMp3(titulo: string, version?: string): string {
+  return `${nombreBaseArchivo(titulo, version)}.mp3`
+}
+
+/** v0.9.0 — nombre del .lrc (letra sincronizada): IGUAL base que
+ * el MP3 para que el reproductor los empareje solo (Musicolet,
+ * Poweramp y casi todos buscan "canción.lrc" al lado de
+ * "canción.mp3"). */
+export function nombreLrc(titulo: string, version?: string): string {
+  return `${nombreBaseArchivo(titulo, version)}.lrc`
+}
+
+/** Base compartida del nombre de archivo: "Título (A) - MusicTrack". */
+function nombreBaseArchivo(titulo: string, version?: string): string {
   const limpio = titulo
     .replace(/[\\/:*?"<>|]+/g, '')
     .replace(/\s+/g, ' ')
     .trim()
   const sufijo = version ? ` (${version})` : ''
-  return `${limpio || 'Mi canción'}${sufijo} - MusicTrack.mp3`
+  return `${limpio || 'Mi canción'}${sufijo} - MusicTrack`
 }
 
 /** Blob → base64 (sin perder bytes por UTF-8: recorre el buffer). */
@@ -101,6 +114,46 @@ export async function guardarMp3EnDescargas(blob: Blob, nombre: string, carpeta:
     a.click()
     a.remove()
     // el blob vive en memoria: revocar tarde para no cortar la descarga
+    window.setTimeout(() => URL.revokeObjectURL(url), 30000)
+    return { ok: true, ruta: `descargas del navegador (${nombre})` }
+  } catch (e) {
+    return { ok: false, ruta: '', error: e instanceof Error ? e.message : 'falló el guardado' }
+  }
+}
+
+/** v0.9.0 — guarda un archivo de TEXTO (el .lrc de la letra
+ * sincronizada) en la misma carpeta que los MP3. Gemelo de
+ * guardarMp3EnDescargas pero con encoding UTF-8 nativo. */
+export async function guardarTextoEnDescargas(
+  texto: string,
+  nombre: string,
+  carpeta: string,
+): Promise<ResultadoDescarga> {
+  const carpetaLimpia = sanearCarpeta(carpeta)
+  try {
+    if (esNativo()) {
+      const path = carpetaLimpia ? `${carpetaLimpia}/${nombre}` : nombre
+      await Filesystem.writeFile({
+        path,
+        data: texto,
+        directory: Directory.Documents,
+        encoding: Encoding.UTF8,
+        recursive: true,
+      })
+      return {
+        ok: true,
+        ruta: carpetaLimpia ? `Documentos/${carpetaLimpia}/${nombre}` : `Documentos/${nombre}`,
+      }
+    }
+    // ── WEB ──
+    const blob = new Blob([texto], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = carpetaLimpia ? `${carpetaLimpia} - ${nombre}` : nombre
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
     window.setTimeout(() => URL.revokeObjectURL(url), 30000)
     return { ok: true, ruta: `descargas del navegador (${nombre})` }
   } catch (e) {

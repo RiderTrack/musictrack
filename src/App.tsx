@@ -8,6 +8,7 @@ import { DashboardView } from '@/views/DashboardView'
 import { LetrasView } from '@/views/LetrasView'
 import { CrearView } from '@/views/CrearView'
 import { MusicaView } from '@/views/MusicaView'
+import { BibliotecaView } from '@/views/BibliotecaView'
 import { AjustesView } from '@/views/AjustesView'
 import { arranqueNativo } from '@/core/natives/plataforma'
 import { pedirPermisoNotificaciones } from '@/core/notificaciones/notificaciones'
@@ -50,6 +51,7 @@ function Contenido() {
         {pestanna === 'letras' && <LetrasView irA={setPestanna} />}
         {pestanna === 'crear' && <CrearView irA={setPestanna} />}
         {pestanna === 'musica' && <MusicaView irA={setPestanna} />}
+        {pestanna === 'biblioteca' && <BibliotecaView irA={setPestanna} />}
         {pestanna === 'ajustes' && <AjustesView />}
       </main>
       <BottomNav activa={pestanna} alCambiar={setPestanna} />

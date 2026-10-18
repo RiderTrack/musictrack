@@ -132,15 +132,34 @@ export function modeloSunoSoportaDuracion(modelo: string): boolean {
  * limite DURO de la API: pasarse = pedido rechazado. */
 export const LIMITE_LETRA_SUNO = 5000
 
+/** v0.9.0 — le saca el ESPACIO DE MÁS antes de medir: espacios
+ * dobles, aire al costado de cada línea y 3+ saltos de línea seguidos.
+ * El usuario descubrió que letras con mucho espacio al aire rebotaban
+ * contra el tope sin necesidad — con la limpieza, varias entran ENTERAS
+ * (y si igual no alcanzan, se recortan por estrofa como en v0.8.1). */
+function normalizarEspaciosLetra(letra: string): string {
+  return letra
+    .split('\n')
+    .map((l) => l.replace(/[ \t]{2,}/g, ' ').trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
 /** v0.8.1 — recorta una letra al límite de Suno SIN partir una
  * estrofa a la mitad: si se pasa de 5.000, corta en el último
  * fin de estrofa (línea vacía) que quepa entero; si la letra no
  * tiene estrofas, en el último salto de línea; si tampoco, corte
  * duro. Lo que queda afuera es exactamente lo que después se
- * completa con ⏩ Extender. */
-export function recortarLetraParaSuno(letra: string): { letra: string; recortada: boolean } {
-  const limpia = letra.trim()
-  if (limpia.length <= LIMITE_LETRA_SUNO) return { letra: limpia, recortada: false }
+ * completa con ⏩ Extender.
+ * v0.9.0 — devuelve `normalizada` cuando la limpieza de espacios
+ * alcanzó para que la letra ENTRE entera (para avisarle al usuario
+ * que no se cortó nada, solo se le acomodó el aire). */
+export function recortarLetraParaSuno(letra: string): { letra: string; recortada: boolean; normalizada: boolean } {
+  const entrada = letra.trim()
+  const limpia = normalizarEspaciosLetra(entrada)
+  const cambioEspacios = limpia !== entrada
+  if (limpia.length <= LIMITE_LETRA_SUNO) return { letra: limpia, recortada: false, normalizada: cambioEspacios }
   const ventana = limpia.slice(0, LIMITE_LETRA_SUNO)
   const porEstrofa = ventana.lastIndexOf('\n\n')
   const porLinea = ventana.lastIndexOf('\n')
@@ -149,7 +168,7 @@ export function recortarLetraParaSuno(letra: string): { letra: string; recortada
   // muy al principio (letra rara) — en ese caso, corte duro.
   const corte = porEstrofa >= 0 ? porEstrofa : porLinea
   const final = corte > LIMITE_LETRA_SUNO * 0.5 ? ventana.slice(0, corte) : ventana
-  return { letra: final.trim(), recortada: true }
+  return { letra: final.trim(), recortada: true, normalizada: cambioEspacios }
 }
 
 /**
@@ -301,41 +320,74 @@ export interface LetraConTiempos {
   finUltimoCanto?: number
 }
 
+/** v0.9.0 — una palabra de la letra sincronizada de Suno, con su
+ * segundo de inicio y fin. Con esta lista se arma el archivo .lrc
+ * (letra que sigue la música, como en Spotify) al bajar el MP3. */
+export interface PalabraSincronizada {
+  palabra: string
+  startS: number
+  endS: number
+}
+
+/** v0.9.0 — LETRA SINCRONIZADA cruda de una pista (docs: POST
+ * /api/v1/generate/get-timestamped-lyrics con taskId + audioId):
+ * palabra por palabra CON SEGUNDOS. Con eso se arma el .lrc de la
+ * canción al bajarla. Si la pista no tiene datos (instrumental,
+ * canción vieja, API sin datos) → null, sin lanzar error: es un
+ * plus, no un requisito. */
+export async function pedirLetraSincronizada(
+  motor: MotorSuno,
+  taskId: string,
+  audioId: string,
+): Promise<PalabraSincronizada[] | null> {
+  try {
+    const r = await pedir(motor, '/api/v1/generate/get-timestamped-lyrics', {
+      method: 'POST',
+      body: JSON.stringify({ taskId, audioId }),
+    })
+    // formato tolerante: data.alignedWords | data.response.alignedWords
+    // | data (array directo) — la API fue migrando el sobre con el tiempo.
+    const d = r.data as Record<string, unknown> | null
+    let crudo: unknown = d?.alignedWords
+    if (!Array.isArray(crudo) && d && typeof d === 'object') {
+      const resp = (d as Record<string, unknown>).response
+      if (resp && typeof resp === 'object') crudo = (resp as Record<string, unknown>).alignedWords
+    }
+    if (!Array.isArray(crudo)) crudo = Array.isArray(d) ? d : null
+    if (!Array.isArray(crudo) || !crudo.length) return null
+    const palabras: PalabraSincronizada[] = []
+    for (const item of crudo as Array<Record<string, unknown>>) {
+      if (item.success === false) continue
+      const startS = item.startS ?? item.startTime
+      const endS = item.endS ?? item.endTime
+      if (typeof startS !== 'number') continue
+      const palabra = String(item.word ?? item.text ?? '')
+      palabras.push({ palabra, startS, endS: typeof endS === 'number' ? endS : startS })
+    }
+    return palabras.length ? palabras : null
+  } catch {
+    // es un PLUS opcional: si falla, se baja el MP3 sin .lrc
+    return null
+  }
+}
+
 /**
- * v0.8.0 — letra sincronizada de una pista (docs: POST
- * /api/v1/generate/get-timestamped-lyrics con taskId + audioId).
- * Devuelve palabra por palabra CON SEGUNDOS: con eso sabemos
- * EXACTAMENTE hasta dónde llegó a cantar una canción cortada
- * (palabrasCantadas / finUltimoCanto) para armar la continuación
- * con lo que faltó. Si la pista no tiene datos (instrumental,
- * canción vieja, API sin datos) → null, sin lanzar error.
+ * v0.8.0 — análisis de la letra sincronizada de una pista: con
+ * las palabras y sus segundos sabemos EXACTAMENTE hasta dónde
+ * llegó a cantar una canción cortada (palabrasCantadas /
+ * finUltimoCanto) para armar la continuación con lo que faltó.
+ * Si la pista no tiene datos → null, sin lanzar error.
  */
 export async function consultarLetraConTiempos(
   motor: MotorSuno,
   taskId: string,
   audioId: string,
 ): Promise<LetraConTiempos | null> {
-  try {
-    const r = await pedir(motor, '/api/v1/generate/get-timestamped-lyrics', {
-      method: 'POST',
-      body: JSON.stringify({ taskId, audioId }),
-    })
-    const d = r.data as Record<string, unknown> | null
-    const palabras = Array.isArray(d?.alignedWords) ? (d?.alignedWords as Array<Record<string, unknown>>) : []
-    if (!palabras.length) return null
-    let cantadas = 0
-    let fin = 0
-    for (const p of palabras) {
-      if (p.success === false) continue
-      cantadas += 1
-      const endS = typeof p.endS === 'number' ? p.endS : 0
-      if (endS > fin) fin = endS
-    }
-    return { palabrasCantadas: cantadas, finUltimoCanto: fin > 0 ? fin : undefined }
-  } catch {
-    // es un PLUS opcional: si falla, el usuario edita la letra a mano
-    return null
-  }
+  const palabras = await pedirLetraSincronizada(motor, taskId, audioId)
+  if (!palabras) return null
+  let fin = 0
+  for (const p of palabras) if (p.endS > fin) fin = p.endS
+  return { palabrasCantadas: palabras.length, finUltimoCanto: fin > 0 ? fin : undefined }
 }
 
 /**

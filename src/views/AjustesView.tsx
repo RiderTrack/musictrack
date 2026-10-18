@@ -323,9 +323,11 @@ export function AjustesView() {
           <Download className="h-4 w-4" /> Descargas de MP3
         </h2>
         <p className="mb-3 text-xs text-neutral-500 dark:text-neutral-400">
-          Cuando tocás ⬇ en una canción, el MP3 se guarda de verdad en el teléfono: en la carpeta pública{' '}
+          Cuando tocás <b>MP3 + letra</b> en la Biblioteca, el archivo se guarda de verdad en el teléfono: en la carpeta pública{' '}
           <span className="font-semibold">Documentos</span>, adentro de esta subcarpeta tuya (se crea sola la primera vez).
-          En la versión web cae en las descargas del navegador.
+          En la versión web cae en las descargas del navegador. Desde la v0.9.0 cada canción baja <b>con la letra adentro</b>{' '}
+          (la leen los reproductores) y acompañada de un archivito <span className="font-semibold">.lrc</span> con el mismo
+          nombre — con esos dos, apps como Musicolet o Poweramp te muestran la letra avanzando con la música, como en Spotify.
         </p>
         <label className="mb-1 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">Nombre de la carpeta</label>
         <input

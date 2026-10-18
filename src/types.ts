@@ -4,7 +4,7 @@
 
 export type Tema = 'oscuro' | 'claro' | 'auto'
 
-export type PestannaId = 'inicio' | 'letras' | 'crear' | 'musica' | 'ajustes'
+export type PestannaId = 'inicio' | 'letras' | 'crear' | 'musica' | 'biblioteca' | 'ajustes'
 
 export interface Ajustes {
   tokenIA: string
@@ -349,40 +349,120 @@ export const ENERGIAS_ESTILO = [
   'Dramática',
   'Sexy',
   'Motivacional',
+  // v0.9.0 — más carácter (pedido: «agregar más características»)
+  'Triunfante',
+  'Celestial',
+  'Festiva',
+  'Vibrante',
 ] as const
 
 /** 🎤 Instrumentos protagonistas (v0.7.0): se suman al estilo
  * ("piano, cuerdas, trompetas"). Se pueden tocar varios.
  * v0.8.1 — coros (personas cantando detrás del solista) e
- * instrumentos medievales/épicos para acompañar los nuevos
- * estilos de metal. */
-export const INSTRUMENTOS_ESTILO = [
-  'Guitarra eléctrica',
-  'Guitarra acústica',
-  'Guitarra distorsionada',
-  'Solo de guitarra',
-  'Riffs pesados',
-  'Doble bombo',
-  'Piano',
-  'Sintetizadores',
-  'Bajo',
-  'Batería',
-  'Percusión',
-  'Trompetas',
-  'Saxofón',
-  'Cuerdas',
-  'Órgano',
-  'Arpa',
-  'Laúd',
-  'Flauta',
-  'Gaita',
-  'Campanas',
-  'Coros',
-  'Coro épico',
-  'Coro femenino',
-  'Coro masculino',
-  'Coro gregoriano',
-  '808',
+ * instrumentos medievales/épicos.
+ * v0.9.0 — AGRUPADOS en carpetas plegables (como los géneros:
+ * una flechita los despliega) y ampliados a ~50: cuerdas, vientos,
+ * percusión épica, coros y folklore andino/medieval. */
+export const GRUPOS_INSTRUMENTOS_ESTILO: { titulo: string; tags: string[] }[] = [
+  {
+    titulo: 'Guitarras y bajo',
+    tags: [
+      'Guitarra eléctrica',
+      'Guitarra acústica',
+      'Guitarra española',
+      'Guitarra distorsionada',
+      'Solo de guitarra',
+      'Riffs pesados',
+      'Doble bombo',
+      'Bajo',
+      'Bajo profundo',
+    ],
+  },
+  {
+    titulo: 'Cuerdas y teclas',
+    tags: [
+      'Piano',
+      'Sintetizadores',
+      'Órgano',
+      'Clavecín',
+      'Acordeón',
+      'Cuerdas',
+      'Violín',
+      'Chelo',
+      'Arpa',
+      'Contrabajo',
+    ],
+  },
+  {
+    titulo: 'Vientos',
+    tags: [
+      'Flauta',
+      'Flauta dulce',
+      'Quena',
+      'Zampoña',
+      'Gaita',
+      'Trompetas',
+      'Trombón',
+      'Corno francés',
+      'Tuba',
+      'Saxofón',
+      'Clarinete',
+    ],
+  },
+  {
+    titulo: 'Percusión y ritmo',
+    tags: [
+      'Batería',
+      'Percusión',
+      'Timbales',
+      'Campanas',
+      'Campanas tubulares',
+      'Tambores taiko',
+      'Percusión épica',
+      'Tambores de guerra',
+      'Pandereta',
+      'Castañuelas',
+      'Palmadas',
+      '808',
+    ],
+  },
+  {
+    // 🧑‍🤝‍🧑 el «coro» del usuario: personas cantando detrás del solista
+    titulo: 'Coros y voces',
+    tags: ['Coros', 'Coro épico', 'Coro femenino', 'Coro masculino', 'Coro gregoriano', 'Coros gospel'],
+  },
+  {
+    titulo: 'Medieval y del mundo',
+    tags: [
+      'Laúd',
+      'Mandolina',
+      'Banjo',
+      'Dulcémele',
+      'Charango',
+      'Arpa céltica',
+      'Cuerno de guerra',
+      'Armónica',
+    ],
+  },
+]
+
+/** Lista PLANA de todos los instrumentos (útil para saber qué tags
+ * de estilo son instrumentos — p. ej. al activar A capela). */
+export const INSTRUMENTOS_ESTILO: string[] = GRUPOS_INSTRUMENTOS_ESTILO.flatMap((g) => g.tags)
+
+/** 🎚️ v0.9.0 — PRODUCCIÓN: cómo se graba la canción. Lo especial
+ * acá es «A capela»: apaga TODOS los instrumentos y queda la voz
+ * sola (el usuario lo pidió — se maneja por TAG de estilo, Suno lo
+ * entiende; no hace falta escribir nada especial en la letra). */
+export const PRODUCCION_ESTILO = [
+  'A capela',
+  'Acústico',
+  'Orquestal',
+  'Sinfónico',
+  'Cinematográfico',
+  'En vivo',
+  'Lo-fi',
+  'Minimalista',
 ] as const
 
 /** ⏱️ Tempo (v0.7.0): EXCLUSIVO — elegir uno quita el anterior.
@@ -392,6 +472,9 @@ export const TEMPOS_ESTILO = [
   { etiqueta: 'Media · groove', tag: '100 bpm' },
   { etiqueta: 'Rápida · bailable', tag: '128 bpm' },
   { etiqueta: 'Acelerada · mosh', tag: '160 bpm' },
+  // v0.9.0 — para el power/speed metal piden volar
+  { etiqueta: 'Muy rápida · power', tag: '180 bpm' },
+  { etiqueta: 'Extrema · blast', tag: '200 bpm' },
 ] as const
 
 /** Una canción generada con Suno o Lyria a partir de una letra. */

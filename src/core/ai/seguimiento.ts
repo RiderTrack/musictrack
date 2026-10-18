@@ -1,20 +1,20 @@
 import { leer, guardar, leerAjustes } from '@/core/storage/almacenamiento'
+import { CLAVE_CANCIONES, EVENTO_CANCIONES } from '@/core/storage/canciones'
 import { consultarPistas, type MotorSuno, type PistaSuno } from '@/core/ai/suno'
 import { notificar, cancelarRecordatorio } from '@/core/notificaciones/notificaciones'
 import type { Cancion } from '@/types'
 
 // ═══════════════════════════════════════════════════════════
 // 👁️ SEGUIMIENTO SUNO A NIVEL APP (v0.5.0) — el polling ya no
-// vive en la pestaña Música: corre mientras la app esté abierta,
-// estés donde estés. Cuando una tarea avanza:
+// vive en una pestaña: corre mientras la app esté abierta, estés
+// donde estés. Cuando una tarea avanza:
 //   • actualiza la biblioteca en storage
 //   • separa las versiones (A, B) en tarjetas propias
-//   • dispara EVENTO_CANCIONES (MusicaView escucha → refresca
+//   • dispara EVENTO_CANCIONES (BibliotecaView escucha → refresca
 //     tarjetas + toasts + semáforo)
 //   • manda la notificación local (aunque estés en otra pestaña)
 // ═══════════════════════════════════════════════════════════
 
-const CLAVE_CANCIONES = 'canciones'
 const MS_ENTRE_POLL = 6000
 
 // v0.6.4 — tareas viejas: pasada la hora y media, una tarea en la
@@ -26,8 +26,8 @@ const MS_ENTRE_POLL_VIEJAS = 60000
 const MS_TAREA_VIEJA = 90 * 60000
 const ultimoChequeo = new Map<string, number>()
 
-/** Evento window con la biblioteca actualizada como detail. */
-export const EVENTO_CANCIONES = 'musictrack:canciones-actualizadas'
+// re-exportado para compatibilidad (antes se declaraba acá)
+export { EVENTO_CANCIONES }
 
 let intervalo: number | null = null
 
@@ -124,7 +124,7 @@ async function tick(): Promise<void> {
       )) {
         void notificar(
           '🎵 ¡Tu canción está lista!',
-          `«${n.titulo}»${n.version ? ` — versión ${n.version}` : ''} ya podés escucharla en Música`,
+          `«${n.titulo}»${n.version ? ` — versión ${n.version}` : ''} ya podés escucharla en tu Biblioteca 📚`,
         )
       }
       for (const n of grupoDespues.filter(
