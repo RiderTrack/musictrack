@@ -11,6 +11,7 @@ import { MusicaView } from '@/views/MusicaView'
 import { AjustesView } from '@/views/AjustesView'
 import { arranqueNativo } from '@/core/natives/plataforma'
 import { pedirPermisoNotificaciones } from '@/core/notificaciones/notificaciones'
+import { iniciarSeguimientoSuno } from '@/core/ai/seguimiento'
 import type { PestannaId } from '@/types'
 
 // ═══════════════════════════════════════════════════════════
@@ -38,6 +39,7 @@ function Contenido() {
   useEffect(() => {
     arranqueNativo()
     pedirPermisoNotificaciones()
+    iniciarSeguimientoSuno()
   }, [])
 
   return (

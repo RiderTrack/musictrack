@@ -179,32 +179,53 @@ export async function generarMusica(
 }
 
 /**
- * Consulta el estado de una pista por su taskId. Cuando termina,
- * llega con las URLs del audio y la portada.
+ * Consulta el estado de una tarea y devuelve TODAS sus versiones
+ * (Suno genera 2 canciones por pedido): cada una con su propio
+ * audio, portada y duración. Mientras ninguna tiene audio, devuelve
+ * una sola pista 'generando' con el estado crudo de la tarea.
  */
-export async function consultarPista(motor: MotorSuno, taskId: string, tituloAlternativo?: string): Promise<PistaSuno> {
+export async function consultarPistas(
+  motor: MotorSuno,
+  taskId: string,
+  tituloAlternativo?: string,
+): Promise<PistaSuno[]> {
   const r = await pedir(motor, `/api/v1/generate/record-info?taskId=${encodeURIComponent(taskId)}`)
   const d = (r.data ?? {}) as Record<string, unknown>
   const estado = String(d.status ?? 'PENDING').toUpperCase()
+
+  if (estado.includes('ERROR') || estado.includes('FAILED')) {
+    return [
+      {
+        taskId,
+        titulo: tituloAlternativo,
+        estado: 'error',
+        estadoCrudo: estado,
+        error:
+          (d.fail_reason as string) ??
+          (d.errorMessage as string) ??
+          (d.msg as string) ??
+          estado,
+      },
+    ]
+  }
+
   const items = Array.isArray(d.listData)
     ? (d.listData as Array<Record<string, unknown>>)
     : Array.isArray(d.data)
       ? (d.data as Array<Record<string, unknown>>)
       : []
-  const propia = items.find((i) => String(i.taskId ?? i.id ?? '') === taskId) ?? items[0] ?? d
-  const pista = pistaDesdeItem({ ...propia, taskId }, tituloAlternativo ?? (propia.title as string))
-  pista.estadoCrudo = estado || undefined
 
-  // Si el audio ya existe, está lista aunque su callback haya fallado
-  // (CALLBACK_EXCEPTION no es culpa nuestra: nosotros usamos polling,
-  // el callBackUrl es solo para satisfacer la validación de la API).
-  if (pista.urlAudio) {
-    pista.estado = 'lista'
-  } else if (estado.includes('ERROR') || estado.includes('FAILED')) {
-    pista.estado = 'error'
-    pista.error = (d.fail_reason as string) ?? (d.msg as string) ?? estado
-  } else {
-    pista.estado = 'generando'
+  if (!items.length) {
+    return [{ taskId, titulo: tituloAlternativo, estado: 'generando', estadoCrudo: estado }]
   }
-  return pista
+
+  return items.map((item) => {
+    const p = pistaDesdeItem({ ...item, taskId }, tituloAlternativo)
+    p.estadoCrudo = estado
+    // Si el audio ya existe, está lista aunque su callback haya fallado
+    // (CALLBACK_EXCEPTION no es culpa nuestra: nosotros usamos polling,
+    // el callBackUrl es solo para satisfacer la validación de la API).
+    p.estado = p.urlAudio ? 'lista' : 'generando'
+    return p
+  })
 }

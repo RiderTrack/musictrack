@@ -134,6 +134,12 @@ export interface Cancion {
   motor?: MotorMusica
   /** true = el MP3 vive en IndexedDB (Lyria), no en una URL CDN (Suno). */
   audioLocal?: boolean
+  /** Grupo de versiones (v0.5.0): Suno devuelve 2 canciones por pedido
+   * y ahora cada una es su propia tarjeta. */
+  grupoId?: string
+  varianteId?: string
+  /** Letra de la versión dentro del grupo ('A', 'B'…). */
+  version?: string
   estado: 'generando' | 'lista' | 'error'
   /** Estado tal cual lo reporta sunoapi.org (PENDING, TEXT_SUCCESS,
    * FIRST_SUCCESS…) — alimenta la barrita de etapas de la v0.4.5. */

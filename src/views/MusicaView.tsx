@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { Disc3, Loader2, Music2, Piano, RefreshCw, Share2, Sparkles, Trash2, Wand2 } from 'lucide-react'
 import { leerAjustes, leer, guardar, borrarClave } from '@/core/storage/almacenamiento'
 import { guardarAudio, leerAudio, borrarAudio } from '@/core/storage/audio'
-import { generarMusica, consultarPista, creditosRestantes, type MotorSuno, type PistaSuno } from '@/core/ai/suno'
+import { generarMusica, consultarPistas, creditosRestantes, type MotorSuno } from '@/core/ai/suno'
+import { aplicarGrupo, EVENTO_CANCIONES } from '@/core/ai/seguimiento'
+import { pedirPermisoNotificaciones, programarRecordatorio } from '@/core/notificaciones/notificaciones'
 import { generarMusicaLyria, armarPromptLyria, type MotorLyria } from '@/core/ai/lyria'
 import { Boton } from '@/components/ui/Boton'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -28,7 +30,6 @@ import {
 
 const CLAVE_CANCIONES = 'canciones'
 const CLAVE_LETRA_A_MUSICALIZAR = 'letraMusicalizar'
-const SEGUNDOS_ENTRE_POLL = 6
 
 function formatoDuracion(seg?: number): string {
   if (!seg || seg <= 0) return ''
@@ -59,21 +60,6 @@ function hintEdad(fecha: number): string {
   if (min <= 3) return ''
   if (min <= 9) return ' — en horas pico la cola se demora'
   return ' — si falla, Suno devuelve los créditos solos'
-}
-
-/** Mezcla el resultado de un polling en la canción existente
- * (reutilizado por el ciclo automático y por «Revisar ahora»). */
-function fusionarPista(x: Cancion, p: PistaSuno): Cancion {
-  return {
-    ...x,
-    estado: p.estado,
-    estadoCrudo: p.estadoCrudo,
-    urlAudio: p.urlAudio ?? x.urlAudio,
-    urlPortada: p.urlPortada ?? x.urlPortada,
-    duracionSeg: p.duracionSeg ?? x.duracionSeg,
-    titulo: p.titulo || x.titulo,
-    error: p.error,
-  }
 }
 
 /** Reproductor que resuelve el audio venga de CDN (Suno) o IndexedDB (Lyria). */
@@ -116,7 +102,6 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
 
   // Biblioteca de canciones
   const [canciones, setCanciones] = useState<Cancion[]>(() => leer<Cancion[]>(CLAVE_CANCIONES, []))
-  const alVivo = useRef(true)
 
   // Créditos de sunoapi.org a la vista (v0.4.4): se actualizan al
   // entrar a la pestaña, al mandar un pedido y cuando una pista
@@ -168,45 +153,34 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Polling: mientras haya pistas 'generando' (Suno), consultar cada N segundos.
-  // Las canciones de Lyria llegan completas de una — no necesitan polling.
+  // 👁️ El polling vive a nivel app (seguimiento.ts) desde la v0.5.0:
+  // la generación sigue aunque estés en otra pestaña. Acá solo
+  // escuchamos las actualizaciones para refrescar tarjetas, avisar
+  // con toast/vibración y alimentar el semáforo de conexión.
+  const previasRef = useRef(canciones)
   useEffect(() => {
-    alVivo.current = true
-    function tick() {
-      if (!alVivo.current) return
-      const pendientes = leer<Cancion[]>(CLAVE_CANCIONES, []).filter(
-        (c) => c.estado === 'generando' && c.motor !== 'lyria',
-      )
-      if (!pendientes.length || !ajustes.tokenSuno) return
-      const motor: MotorSuno = { url: ajustes.urlSuno, token: ajustes.tokenSuno }
-      pendientes.forEach(async (c) => {
-        try {
-          const pista = await consultarPista(motor, c.taskId, c.titulo)
-          if (!alVivo.current) return
-          setUltimoContacto(Date.now())
-          setCanciones((cs) => cs.map((x) => (x.id === c.id ? fusionarPista(x, pista) : x)))
-          if (pista.estado === 'lista') {
-            vibrar()
-            mostrar(`¡«${c.titulo}» lista! 🎧`, 'ok')
-            void actualizarCreditos()
-          }
-          if (pista.estado === 'error') {
-            mostrar(`«${c.titulo}» falló — Suno devuelve los créditos de esa generación`, 'info', 4500)
-            void actualizarCreditos()
-          }
-        } catch {
-          /* sigue generando — el próximo tick reintenta */
-        }
-      })
+    previasRef.current = canciones
+  }, [canciones])
+  useEffect(() => {
+    function alActualizar(e: Event) {
+      const nuevas = (e as CustomEvent<Cancion[]>).detail
+      const previas = previasRef.current
+      nuevas
+        .filter((n) => n.estado === 'lista' && previas.find((p) => p.id === n.id)?.estado === 'generando')
+        .forEach((n) => {
+          vibrar()
+          mostrar(`¡«${n.titulo}»${n.version ? ` (versión ${n.version})` : ''} lista! 🎧`, 'ok')
+        })
+      nuevas
+        .filter((n) => n.estado === 'error' && previas.find((p) => p.id === n.id)?.estado === 'generando')
+        .forEach((n) => mostrar(`«${n.titulo}» falló — Suno devuelve los créditos`, 'info', 4500))
+      setCanciones(nuevas)
+      setUltimoContacto(Date.now())
     }
-    const intervalo = window.setInterval(tick, SEGUNDOS_ENTRE_POLL * 1000)
-    tick()
-    return () => {
-      alVivo.current = false
-      window.clearInterval(intervalo)
-    }
+    window.addEventListener(EVENTO_CANCIONES, alActualizar)
+    return () => window.removeEventListener(EVENTO_CANCIONES, alActualizar)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ajustes.tokenSuno])
+  }, [])
 
   function elegirLetra(id: string) {
     setLetraId(id)
@@ -272,7 +246,14 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
       if (!nuevas.length) throw new Error('La API no devolvió pistas')
       setCanciones((cs) => [...nuevas, ...cs])
       void actualizarCreditos()
-      mostrar(`${nuevas.length} ${nuevas.length === 1 ? 'versión' : 'versiones'} en el horno 🔥 — llegan en 1 a 3 min (en horas pico un poco más)`, 'ok', 4500)
+      // 🔔 v0.5.0: avisar cuando llegue, aunque estés en otra pestaña o
+      // cierres la app — el recordatorio lo agenda el sistema operativo.
+      void (async () => {
+        if (await pedirPermisoNotificaciones()) {
+          for (const n of nuevas) if (n.taskId) void programarRecordatorio(n.taskId, tituloLimpio)
+        }
+      })()
+      mostrar(`${nuevas.length} ${nuevas.length === 1 ? 'versión' : 'versiones'} en el horno 🔥 — te aviso cuando lleguen 🔔`, 'ok', 4500)
     } catch (e) {
       mostrar(e instanceof Error ? e.message : 'Falló Suno', 'error', 4500)
     } finally {
@@ -333,26 +314,27 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
     }
   }
 
-  /** Consulta inmediata de una pista, sin esperar al ciclo de 6 s.
-   * Responde con la etapa real: en cola / componiendo / lista. */
+  /** Consulta inmediata de una tarea, sin esperar al ciclo de 6 s.
+   * Aplica todas las versiones que haya listas (A, B…) al toque. */
   const [revisandoId, setRevisandoId] = useState<string | null>(null)
   async function revisarAhora(c: Cancion) {
-    if (!ajustes.tokenSuno || revisandoId) return
+    if (!ajustes.tokenSuno || revisandoId || !c.taskId) return
     setRevisandoId(c.id)
     try {
       const motor: MotorSuno = { url: ajustes.urlSuno, token: ajustes.tokenSuno }
-      const pista = await consultarPista(motor, c.taskId, c.titulo)
+      const pistas = await consultarPistas(motor, c.taskId, c.titulo)
       setUltimoContacto(Date.now())
-      setCanciones((cs) => cs.map((x) => (x.id === c.id ? fusionarPista(x, pista) : x)))
-      if (pista.estado === 'lista') {
+      setCanciones((cs) => aplicarGrupo(cs, c.taskId, pistas))
+      const listas = pistas.filter((p) => p.estado === 'lista')
+      if (listas.length) {
         vibrar()
-        mostrar(`¡«${c.titulo}» está lista! 🎧`, 'ok')
+        mostrar(`¡${listas.length} ${listas.length === 1 ? 'versión lista' : 'versiones listas'} de «${c.titulo}»! 🎧`, 'ok')
         void actualizarCreditos()
-      } else if (pista.estado === 'error') {
+      } else if (pistas.some((p) => p.estado === 'error')) {
         mostrar(`«${c.titulo}» falló — Suno devuelve los créditos de esa generación`, 'info', 4000)
         void actualizarCreditos()
       } else {
-        mostrar(`Sigue en camino: ${etapaDe({ ...c, estadoCrudo: pista.estadoCrudo }).texto.toLowerCase()} ⏳`, 'info', 3500)
+        mostrar(`Sigue en camino: ${etapaDe({ ...c, estadoCrudo: pistas[0]?.estadoCrudo }).texto.toLowerCase()} ⏳`, 'info', 3500)
       }
     } catch (e) {
       mostrar(e instanceof Error ? e.message : 'No se pudo consultar ahora', 'error', 4000)
@@ -625,6 +607,11 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
                       <p className="min-w-0 truncate font-semibold text-neutral-900 dark:text-white">{c.titulo}</p>
+                      {c.version && (
+                        <span className="shrink-0 rounded-full bg-acento/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-acento">
+                          Versión {c.version}
+                        </span>
+                      )}
                       <span
                         className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
                           c.estado === 'lista'
