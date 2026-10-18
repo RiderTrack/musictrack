@@ -37,6 +37,19 @@ function formatoDuracion(seg?: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
+/** Mensaje de espera honesto: 1 a 3 min es lo típico, pero en
+ * horas pico la cola de Suno (API de terceros) se estira a 10+ min.
+ * Muestra cuánto lleva cada canción para que no parezca que la app
+ * se colgó — el contador se actualiza solo porque el polling
+ * re-renderiza cada 6 segundos. */
+function textoGenerando(fecha: number): string {
+  const min = Math.floor((Date.now() - fecha) / 60000)
+  if (min < 1) return 'Suno está componiendo… (lo normal: 1 a 3 min)'
+  if (min <= 3) return `Suno está componiendo… (${min} min)`
+  if (min <= 9) return `Suno está componiendo… (${min} min — en horas pico la cola de Suno se demora, tu pedido sigue en camino)`
+  return `Suno está componiendo… (${min} min — si nunca llega, tocá «Quitar de la lista» y probá de nuevo)`
+}
+
 /** Reproductor que resuelve el audio venga de CDN (Suno) o IndexedDB (Lyria). */
 function Reproductor({ cancion }: { cancion: Cancion }) {
   const [src, setSrc] = useState<string | null>(cancion.urlAudio ?? null)
@@ -211,7 +224,7 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
         }))
       if (!nuevas.length) throw new Error('La API no devolvió pistas')
       setCanciones((cs) => [...nuevas, ...cs])
-      mostrar(`${nuevas.length} ${nuevas.length === 1 ? 'versión' : 'versiones'} en el horno 🔥 — llegan en 1 a 3 min`, 'ok', 4000)
+      mostrar(`${nuevas.length} ${nuevas.length === 1 ? 'versión' : 'versiones'} en el horno 🔥 — llegan en 1 a 3 min (en horas pico un poco más)`, 'ok', 4500)
     } catch (e) {
       mostrar(e instanceof Error ? e.message : 'Falló Suno', 'error', 4500)
     } finally {
@@ -459,7 +472,7 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
             </Boton>
             <p className="text-center text-[11px] text-neutral-400">
               {motor === 'suno'
-                ? 'Cada pedido crea 2 versiones · tarda 1 a 3 min · modelo ' + (ajustes.modeloSuno ?? 'V4_5').replace('_', '.')
+                ? 'Cada pedido crea 2 versiones · 1 a 3 min (más en horas pico) · modelo ' + (ajustes.modeloSuno ?? 'V4_5').replace('_', '.')
                 : 'Lyria devuelve la canción completa · requiere billing en Google AI Studio'}
             </p>
           </div>
@@ -528,7 +541,7 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
 
                     {c.estado === 'generando' && (
                       <p className="mt-2 flex items-center gap-1.5 text-xs text-neutral-400">
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Suno está componiendo… (1 a 3 min)
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" /> {textoGenerando(c.fecha)}
                       </p>
                     )}
                     {c.estado === 'error' && (
