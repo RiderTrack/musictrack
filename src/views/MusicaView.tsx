@@ -14,6 +14,7 @@ import {
   ESTILOS_RAPIDOS,
   GRUPOS_TAGS_ESTILO,
   MODELOS_LYRIA,
+  modeloSunoBonito,
   type Cancion,
   type Letra,
   type MotorMusica,
@@ -462,7 +463,7 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
   const segundosSinRespuesta = ultimoContacto ? Math.max(0, Math.round((Date.now() - ultimoContacto) / 1000)) : null
   const sunoMudo = generando > 0 && ultimoContacto !== null && (segundosSinRespuesta ?? 0) > 45
   const tokenDelMotor = motor === 'suno' ? ajustes.tokenSuno : ajustes.tokenLyria
-  const modeloActual = motor === 'suno' ? `Suno ${(ajustes.modeloSuno ?? 'V4_5').replace('_', '.')}` : (MODELOS_LYRIA.find((m) => m.id === ajustes.modeloLyria)?.etiqueta ?? ajustes.modeloLyria)
+  const modeloActual = motor === 'suno' ? `Suno ${modeloSunoBonito(ajustes.modeloSuno ?? 'V4_5')}` : (MODELOS_LYRIA.find((m) => m.id === ajustes.modeloLyria)?.etiqueta ?? ajustes.modeloLyria)
   const etiquetaModelo = MODELOS_LYRIA.find((m) => m.id === ajustes.modeloLyria)?.etiqueta.split(' · ')[0] ?? 'Lyria'
 
   return (
@@ -668,7 +669,7 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
             </Boton>
             <p className="text-center text-[11px] text-neutral-400">
               {motor === 'suno'
-                ? 'Cada pedido crea 2 versiones · 1 a 3 min (más en horas pico) · modelo ' + (ajustes.modeloSuno ?? 'V4_5').replace('_', '.')
+                ? 'Cada pedido crea 2 versiones · 1 a 3 min (más en horas pico) · modelo ' + modeloSunoBonito(ajustes.modeloSuno ?? 'V4_5')
                 : 'Lyria devuelve la canción completa · requiere billing en Google AI Studio'}
             </p>
             {motor === 'suno' && creditos !== null && (

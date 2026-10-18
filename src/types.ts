@@ -22,7 +22,7 @@ export const AJUSTES_POR_DEFECTO: Ajustes = {
   modeloIA: 'claude-sonnet-4-5-20250929',
   tokenSuno: '',
   urlSuno: 'https://api.sunoapi.org',
-  modeloSuno: 'V4_5',
+  modeloSuno: 'V6',
   tokenLyria: '',
   modeloLyria: 'lyria-3.5',
   onboardingVisto: false,
@@ -101,7 +101,36 @@ export interface Letra {
 // voz e instrumentos. Cada versión es una Cancion.
 // ═══════════════════════════════════════════════════════════
 
-export const MODELOS_SUNO = ['V3_5', 'V4', 'V4_5', 'V5'] as const
+export const MODELOS_SUNO = [
+  { id: 'V6', etiqueta: 'V6 · el más nuevo — voces naturales, recomendado' },
+  { id: 'V6_MINI', etiqueta: 'V6 Mini · liviano y RÁPIDO — menos espera' },
+  { id: 'V6_WILD', etiqueta: 'V6 Wild · más creativo y arriesgado' },
+  { id: 'V5', etiqueta: 'V5 · discontinuado (anda, pero ya no lo mejoran)' },
+  { id: 'V4_5', etiqueta: 'V4.5 · discontinuado' },
+  { id: 'V4', etiqueta: 'V4 · discontinuado' },
+  { id: 'V3_5', etiqueta: 'V3.5 · discontinuado' },
+] as const
+
+/** IDs de Suno discontinuados por sunoapi.org (siguen funcionando
+ * por compatibilidad, pero ya no reciben mejoras). */
+export const MODELOS_SUNO_VIEJOS = ['V5', 'V4_5', 'V4_5PLUS', 'V4_5ALL', 'V4', 'V3_5'] as const
+
+/** Versión bonita a mostrar: V6_MINI → «V6 Mini», V4_5 → «V4.5». */
+export function modeloSunoBonito(id: string): string {
+  const mapa: Record<string, string> = {
+    V6: 'V6',
+    V6_MINI: 'V6 Mini',
+    V6_WILD: 'V6 Wild',
+    V5: 'V5',
+    V5_5: 'V5.5',
+    V4_5: 'V4.5',
+    V4_5PLUS: 'V4.5 Plus',
+    V4_5ALL: 'V4.5 All',
+    V4: 'V4',
+    V3_5: 'V3.5',
+  }
+  return mapa[id] ?? id.replace(/_/g, ' ')
+}
 
 export const MODELOS_LYRIA = [
   { id: 'lyria-3.5', etiqueta: 'Lyria 3.5 · canción completa (~2 min, $0.08)' },

@@ -13,7 +13,7 @@ import { Boton } from '@/components/ui/Boton'
 import { firebaseConfigurado } from '@/services/firebase'
 import { plataformaActual, vibrar, abrirURL } from '@/core/natives/plataforma'
 import { buscarUltimaVersion, esMasNueva, type InfoActualizacion } from '@/core/actualizacion/actualizacion'
-import { AJUSTES_POR_DEFECTO, MODELOS_LYRIA, MODELOS_SUNO, type Ajustes, type Tema } from '@/types'
+import { AJUSTES_POR_DEFECTO, MODELOS_LYRIA, MODELOS_SUNO, MODELOS_SUNO_VIEJOS, type Ajustes, type Tema } from '@/types'
 
 // ═══════════════════════════════════════════════════════════
 // ⚙️ AJUSTES — el panel de control del esqueleto:
@@ -274,11 +274,17 @@ export function AjustesView() {
           className="h-11 w-full rounded-xl border border-neutral-300 bg-transparent px-3 text-sm outline-none transition-colors focus:border-acento dark:border-neutral-700"
         >
           {MODELOS_SUNO.map((m) => (
-            <option key={m} value={m}>
-              Suno {m.replace('_', '.')}
+            <option key={m.id} value={m.id}>
+              {m.etiqueta}
             </option>
           ))}
         </select>
+        {(MODELOS_SUNO_VIEJOS as readonly string[]).includes(ajustes.modeloSuno) && (
+          <p className="mt-1.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
+            ⚠️ Tu modelo ({ajustes.modeloSuno.replace('_', '.')}) está discontinuado en sunoapi.org — para esperar menos,
+            cambiate a V6 Mini (o V6, el recomendado)
+          </p>
+        )}
         <Boton className="mt-3 w-full" variante="secundario" icono={<KeyRound className="h-4 w-4" />} onClick={probarSuno} cargando={probandoSuno}>
           Probar conexión y créditos
         </Boton>

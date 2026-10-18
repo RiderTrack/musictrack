@@ -16,7 +16,7 @@ import {
   versionIgnorada,
   type InfoActualizacion,
 } from '@/core/actualizacion/actualizacion'
-import { type Cancion, type Letra, type PestannaId } from '@/types'
+import { modeloSunoBonito, type Cancion, type Letra, type PestannaId } from '@/types'
 
 // ═══════════════════════════════════════════════════════════
 // 📊 DASHBOARD MusicTrack — saludo + estado (KPIs: IA, letras,
@@ -133,7 +133,7 @@ export function DashboardView({ irA }: { irA: (p: PestannaId) => void }) {
             ajustes.tokenSuno && ajustes.tokenLyria
               ? `Suno ✓ · Lyria ${(ajustes.modeloLyria ?? '').includes('clip') ? 'clip' : '3.5'} ✓`
               : ajustes.tokenSuno
-                ? `modelo ${(ajustes.modeloSuno ?? 'V4_5').replace('_', '.')} — Lyria sin clave`
+                ? `modelo ${modeloSunoBonito(ajustes.modeloSuno ?? 'V4_5')} — Lyria sin clave`
                 : ajustes.tokenLyria
                   ? 'Suno sin clave — el plan B'
                   : 'Configuralas en Ajustes'
