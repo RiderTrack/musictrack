@@ -84,6 +84,10 @@ export const GENEROS_MUSICALES = [
   'Rock',
   'Nu metal',
   'Metal / Punk',
+  'Power metal',
+  'Metal sinfónico',
+  'Metal medieval',
+  'Folk metal',
   'Pop rock',
   'Indie / Alternativo',
   'Hip-hop / Rap',
@@ -122,6 +126,7 @@ export const ESTRUCTURAS = [
   { id: 'sencilla', etiqueta: 'Sencilla', detalle: 'corta: 1 verso + coro (12 a 16 líneas)' },
   { id: 'estandar', etiqueta: 'Estándar', detalle: '2 versos + pre-coro + coro + puente (20 a 28 líneas)' },
   { id: 'extendida', etiqueta: 'Extendida', detalle: '3 versos + puente + outro (30 a 40 líneas)' },
+  { id: 'epica', etiqueta: 'Épica', detalle: 'canción larga: 4-5 versos + coros dobles + puentes + outro (45 a 60 líneas, para power metal y relatos largos)' },
 ] as const
 
 /** Una letra de la biblioteca — creada con IA o escrita a mano (FASE 2). */
@@ -261,6 +266,29 @@ export const GRUPOS_TAGS_ESTILO: { titulo: string; tags: string[] }[] = [
     ],
   },
   {
+    // v0.8.1 — pedido del usuario: «esa música rápida bonita
+    // medieval sinfónica». Todo lo épico, medieval y sinfónico
+    // junto para armar ese estilo de un solo vistazo.
+    titulo: 'Épico · medieval & sinfónico',
+    tags: [
+      'Symphonic power metal',
+      'Symphonic metal',
+      'Speed metal',
+      'Neoclassical metal',
+      'Medieval metal',
+      'Medieval rock',
+      'Folk metal',
+      'Viking metal',
+      'Celtic metal',
+      'Pirate metal',
+      'Gothic metal',
+      'Melodic death metal',
+      'Música medieval',
+      'Celta',
+      'Banda sonora épica',
+    ],
+  },
+  {
     titulo: 'Pop, jazz & clásicos',
     tags: [
       'Pop',
@@ -324,11 +352,17 @@ export const ENERGIAS_ESTILO = [
 ] as const
 
 /** 🎤 Instrumentos protagonistas (v0.7.0): se suman al estilo
- * ("piano, cuerdas, trompetas"). Se pueden tocar varios. */
+ * ("piano, cuerdas, trompetas"). Se pueden tocar varios.
+ * v0.8.1 — coros (personas cantando detrás del solista) e
+ * instrumentos medievales/épicos para acompañar los nuevos
+ * estilos de metal. */
 export const INSTRUMENTOS_ESTILO = [
   'Guitarra eléctrica',
   'Guitarra acústica',
   'Guitarra distorsionada',
+  'Solo de guitarra',
+  'Riffs pesados',
+  'Doble bombo',
   'Piano',
   'Sintetizadores',
   'Bajo',
@@ -338,10 +372,17 @@ export const INSTRUMENTOS_ESTILO = [
   'Saxofón',
   'Cuerdas',
   'Órgano',
+  'Arpa',
+  'Laúd',
+  'Flauta',
+  'Gaita',
+  'Campanas',
   'Coros',
+  'Coro épico',
+  'Coro femenino',
+  'Coro masculino',
+  'Coro gregoriano',
   '808',
-  'Riffs pesados',
-  'Solo de guitarra',
 ] as const
 
 /** ⏱️ Tempo (v0.7.0): EXCLUSIVO — elegir uno quita el anterior.

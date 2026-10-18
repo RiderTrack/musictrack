@@ -70,6 +70,8 @@ function traducirErrorSuno(msg: string): string {
     return 'Suno rechazó el contenido — suavizá la letra o el estilo y probá de nuevo'
   if (m.includes('rate') || m.includes('too many'))
     return 'demasiados pedidos seguidos — esperá unos segundos y reintentá'
+  if (m.includes('5000') || m.includes('length of lyrics') || m.includes('lyrics cannot exceed'))
+    return 'la letra supera el límite de 5.000 caracteres de Suno — acortala o completá la canción con ⏩ Extender'
   return msg
 }
 
@@ -123,6 +125,31 @@ function pistaDesdeItem(item: Record<string, unknown>, tituloAlternativo?: strin
  * (V4/V4_5/V5) mandarlo puede responder 400 — mejor ni enviarlo. */
 export function modeloSunoSoportaDuracion(modelo: string): boolean {
   return ['V6', 'V6_MINI', 'V6_WILD', 'V5_5'].includes(modelo)
+}
+
+/** v0.8.1 — tope de caracteres de la letra que acepta Suno
+ * ("The length of lyrics cannot exceed 5000 characters"). Es un
+ * limite DURO de la API: pasarse = pedido rechazado. */
+export const LIMITE_LETRA_SUNO = 5000
+
+/** v0.8.1 — recorta una letra al límite de Suno SIN partir una
+ * estrofa a la mitad: si se pasa de 5.000, corta en el último
+ * fin de estrofa (línea vacía) que quepa entero; si la letra no
+ * tiene estrofas, en el último salto de línea; si tampoco, corte
+ * duro. Lo que queda afuera es exactamente lo que después se
+ * completa con ⏩ Extender. */
+export function recortarLetraParaSuno(letra: string): { letra: string; recortada: boolean } {
+  const limpia = letra.trim()
+  if (limpia.length <= LIMITE_LETRA_SUNO) return { letra: limpia, recortada: false }
+  const ventana = limpia.slice(0, LIMITE_LETRA_SUNO)
+  const porEstrofa = ventana.lastIndexOf('\n\n')
+  const porLinea = ventana.lastIndexOf('\n')
+  // estrofa completa primero; sin estrofas, línea; el guard de la
+  // mitad evita cortar absurdamente corto si el único corte vive
+  // muy al principio (letra rara) — en ese caso, corte duro.
+  const corte = porEstrofa >= 0 ? porEstrofa : porLinea
+  const final = corte > LIMITE_LETRA_SUNO * 0.5 ? ventana.slice(0, corte) : ventana
+  return { letra: final.trim(), recortada: true }
 }
 
 /**
@@ -199,14 +226,18 @@ export async function generarMusica(
   // en los otros ni se manda (la API podría rechazar el pedido).
   const duracion =
     op.duracionSeg && op.duracionSeg >= 10 && modeloSunoSoportaDuracion(op.modelo) ? op.duracionSeg : undefined
+  // 🩹 v0.8.1 — red de seguridad: por más que la UI ya recorte,
+  // acá NUNCA se manda una letra de más de 5.000 caracteres (la
+  // API la rechaza entera y se pierden los créditos del intento).
+  const { letra: letraAEnviar } = recortarLetraParaSuno(op.instrumental ? '' : op.letra)
   const r = await pedir(motor, '/api/v1/generate', {
     method: 'POST',
     body: JSON.stringify({
-      prompt: op.instrumental ? '' : op.letra,
+      prompt: op.instrumental ? '' : letraAEnviar,
       // La API nueva prioriza `lyrics` sobre `prompt` cuando existe
       // (docs.sunoapi.org, custom mode) — se mandan ambas por si la
       // URL base del usuario apunta a una versión vieja de la API.
-      lyrics: op.instrumental ? '' : op.letra,
+      lyrics: op.instrumental ? '' : letraAEnviar,
       style: op.estilo,
       title: op.titulo,
       customMode: true,
@@ -240,6 +271,8 @@ export async function extenderMusica(
     modelo: string
   },
 ): Promise<PistaSuno[]> {
+  // 🩹 v0.8.1 — mismo tope de 5.000 para la letra de la continuación
+  const { letra: letraAEnviar } = recortarLetraParaSuno(op.instrumental ? '' : op.letra)
   const r = await pedir(motor, '/api/v1/generate/extend', {
     method: 'POST',
     body: JSON.stringify({
@@ -247,8 +280,8 @@ export async function extenderMusica(
       ...(op.taskId ? { taskId: op.taskId } : {}),
       continueAt: Math.round(op.continueAt),
       // igual que en generate: la API nueva prioriza lyrics; ambas van
-      lyrics: op.instrumental ? '' : op.letra,
-      prompt: op.instrumental ? '' : op.letra,
+      lyrics: op.instrumental ? '' : letraAEnviar,
+      prompt: op.instrumental ? '' : letraAEnviar,
       style: op.estilo,
       title: op.titulo,
       instrumental: op.instrumental,

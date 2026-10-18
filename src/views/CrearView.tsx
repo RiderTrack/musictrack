@@ -408,7 +408,9 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
 
           <div>
             <span className="mb-1.5 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">Estructura</span>
-            <div className="grid grid-cols-3 gap-2">
+            {/* v0.8.1 — 4 estructuras (sumó «Épica» para las canciones
+                largas de power metal): 2×2 queda más prolijo que 3+1 */}
+            <div className="grid grid-cols-2 gap-2">
               {ESTRUCTURAS.map((e) => (
                 <button
                   key={e.id}

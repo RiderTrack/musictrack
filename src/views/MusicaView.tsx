@@ -24,7 +24,9 @@ import {
   creditosRestantes,
   extenderMusica,
   generarMusica,
+  LIMITE_LETRA_SUNO,
   modeloSunoSoportaDuracion,
+  recortarLetraParaSuno,
   type MotorSuno,
 } from '@/core/ai/suno'
 import { aplicarGrupo, EVENTO_CANCIONES } from '@/core/ai/seguimiento'
@@ -440,20 +442,33 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
     }
     const tituloLimpio = titulo.trim() || 'Mi canción'
     const estiloLimpio = estilo.trim() || 'pop latino'
+    // 🩹 v0.8.1 — Suno rechaza letras de más de 5.000 caracteres
+    // ("The length of lyrics cannot exceed 5000 characters", el error
+    // que veía el usuario): se manda hasta la última estrofa completa
+    // que quepa y el resto se completa después con ⏩ Extender. La
+    // tarjeta guarda la letra COMPLETA para que Extender sepa qué falta.
+    const envio = recortarLetraParaSuno(textoLimpio)
+    if (envio.recortada) {
+      mostrar(
+        `Tu letra tiene ${textoLimpio.length.toLocaleString('es')} caracteres y Suno acepta hasta 5.000 — mando hasta la última estrofa completa; el final lo completás con ⏩ Extender cuando llegue`,
+        'info',
+        6500,
+      )
+    }
     // Duración que se manda a la API: 'letra' calcula según las
     // palabras (en instrumental no hay letra que ajustar → auto).
     const duracionSeg =
       duracion === 'auto' || instrumental
         ? undefined
         : duracion === 'letra'
-          ? (estimarDuracion(textoLimpio)?.seg ?? undefined)
+          ? (estimarDuracion(envio.letra)?.seg ?? undefined)
           : duracion
     vibrar()
     setCargando(true)
     try {
       const motor: MotorSuno = { url: ajustes.urlSuno, token: ajustes.tokenSuno }
       const pistas = await generarMusica(motor, {
-        letra: textoLimpio,
+        letra: envio.letra,
         estilo: estiloLimpio,
         titulo: tituloLimpio,
         instrumental,
@@ -955,8 +970,20 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
 
             {!instrumental && (
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">
-                  Letra — editá lo que quieras
+                <span className="mb-1 flex items-baseline justify-between gap-2 text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+                  <span>Letra — editá lo que quieras</span>
+                  {/* 🩹 v0.8.1 — contador del límite duro de Suno */}
+                  <span
+                    className={`shrink-0 text-[10px] font-bold tabular-nums ${
+                      texto.length > LIMITE_LETRA_SUNO
+                        ? 'text-red-500'
+                        : texto.length > LIMITE_LETRA_SUNO * 0.9
+                          ? 'text-amber-500'
+                          : 'text-neutral-400'
+                    }`}
+                  >
+                    {texto.length.toLocaleString('es')} / {LIMITE_LETRA_SUNO.toLocaleString('es')}
+                  </span>
                 </span>
                 <textarea
                   value={texto}
@@ -965,6 +992,12 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                   rows={8}
                   className="min-h-[150px] w-full resize-y rounded-xl border border-neutral-300 bg-transparent p-3 text-sm outline-none transition-colors placeholder:text-neutral-400 focus:border-acento dark:border-neutral-700"
                 />
+                {texto.length > LIMITE_LETRA_SUNO && (
+                  <span className="mt-1 block text-[11px] font-semibold leading-relaxed text-red-500">
+                    ⚠ Pasás el tope de Suno ({LIMITE_LETRA_SUNO.toLocaleString('es')} caracteres): al generar mando hasta la
+                    última estrofa completa — el final lo completás con ⏩ Extender
+                  </span>
+                )}
               </label>
             )}
 
