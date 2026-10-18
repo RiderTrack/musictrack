@@ -136,8 +136,13 @@ async function tick(): Promise<void> {
       }
 
       window.dispatchEvent(new CustomEvent<Cancion[]>(EVENTO_CANCIONES, { detail: despues }))
-    } catch {
-      /* sigue generando — el próximo tick reintenta */
+    } catch (e) {
+      // v0.6.5: este catch vacío se tragaba TODOS los errores (red
+      // caída, clave vencida, formato cambiado) y el fallo quedaba
+      // invisible. Ahora queda en consola — visible con chrome://inspect
+      // o la consola del navegador — para poder diagnosticar. El
+      // semáforo de Música escala solo a «no responde» si persiste.
+      console.warn('[seguimiento] el chequeo de Suno falló (reintento en el próximo ciclo)', e)
     }
   }
 }

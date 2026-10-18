@@ -165,8 +165,11 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
     return () => window.clearInterval(i)
   }, [])
 
-  // 🟢 Marca de la última respuesta exitosa de Suno (semáforo)
-  const [ultimoContacto, setUltimoContacto] = useState<number | null>(null)
+  // 🟢 Marca de la última respuesta exitosa de Suno (semáforo).
+  // v0.6.5: arranca “ahora” — si Suno nunca contesta (red caída,
+  // clave vencida), a los 45 s el semáforo escala a «no responde»
+  // en vez de quedarse en «contactando…» para siempre.
+  const [ultimoContacto, setUltimoContacto] = useState<number | null>(() => Date.now())
 
   // Persistencia de la biblioteca
   useEffect(() => {

@@ -213,11 +213,22 @@ export async function consultarPistas(
     ]
   }
 
-  const items = Array.isArray(d.listData)
-    ? (d.listData as Array<Record<string, unknown>>)
-    : Array.isArray(d.data)
-      ? (d.data as Array<Record<string, unknown>>)
-      : []
+  // 🩹 v0.6.5 — EL BUG DE LA COLA ETERNA: sunoapi.org migró el
+  // formato de record-info (docs actuales) y las pistas ahora viven
+  // en data.response.sunoData. Nosotros leíamos solo listData/data
+  // (formato de las docs viejas), así que una tarea TERMINADA se
+  // veía como lista vacía → «generando» para siempre, aunque la
+  // canción ya estuviera hecha y los créditos consumidos.
+  // Formato actual primero; los viejos quedan como respaldo para
+  // URLs base que apunten a despliegues anteriores de la API.
+  const respuesta = (d.response ?? {}) as Record<string, unknown>
+  const items = Array.isArray(respuesta.sunoData)
+    ? (respuesta.sunoData as Array<Record<string, unknown>>)
+    : Array.isArray(d.listData)
+      ? (d.listData as Array<Record<string, unknown>>)
+      : Array.isArray(d.data)
+        ? (d.data as Array<Record<string, unknown>>)
+        : []
 
   if (!items.length) {
     return [{ taskId, titulo: tituloAlternativo, estado: 'generando', estadoCrudo: estado }]
