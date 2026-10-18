@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Disc3, Download, Loader2, Music2, Piano, RefreshCw, Rocket, Share2, Sparkles, Trash2, Wand2 } from 'lucide-react'
+import { Disc3, Download, Loader2, Music2, Piano, RefreshCw, Rocket, Share2, Skull, Sparkles, Trash2, Wand2 } from 'lucide-react'
 import { leerAjustes, leer, guardar, borrarClave } from '@/core/storage/almacenamiento'
 import { guardarAudio, leerAudio, borrarAudio } from '@/core/storage/audio'
 import { generarMusica, consultarPistas, creditosRestantes, type MotorSuno } from '@/core/ai/suno'
@@ -33,6 +33,12 @@ import {
 const CLAVE_CANCIONES = 'canciones'
 const CLAVE_LETRA_A_MUSICALIZAR = 'letraMusicalizar'
 
+/** Minutos a partir de los cuales damos una tarea por MUERTA (v0.6.4):
+ * la cola del intermediario en el peor caso llega a ~60 min; pasada
+ * la hora y media, la tarea se cayó y lo honesto es decirlo en la
+ * tarjeta — no dejarla pulsando «en cola» por 8 horas. */
+const MIN_TAREA_MUERTA = 90
+
 function formatoDuracion(seg?: number): string {
   if (!seg || seg <= 0) return ''
   const m = Math.floor(seg / 60)
@@ -50,10 +56,19 @@ function etapaDe(c: Cancion): { texto: string; paso: 1 | 2 | 3 } {
   return { texto: 'Suno está componiendo 🎙️', paso: 3 } // TEXT_SUCCESS / STREAMING / etc.
 }
 
-/** Minutos desde que se envió el pedido a Suno. */
+/** Minutos (entero) desde que se envió el pedido a Suno. */
+function edadMin(fecha: number): number {
+  return Math.floor((Date.now() - fecha) / 60000)
+}
+
+/** Edad bonita: bajo 90 min «45 min»; después «8 h 20 min». */
 function minutosDesde(fecha: number): string {
-  const min = Math.floor((Date.now() - fecha) / 60000)
-  return min < 1 ? 'menos de 1 min' : `${min} min`
+  const min = edadMin(fecha)
+  if (min < 1) return 'menos de 1 min'
+  if (min < 90) return `${min} min`
+  const h = Math.floor(min / 60)
+  const resto = min % 60
+  return resto ? `${h} h ${resto} min` : `${h} h`
 }
 
 /** Consejo honesto según la edad de la espera. */
@@ -376,7 +391,16 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
         mostrar(`«${c.titulo}» falló — Suno devuelve los créditos de esa generación`, 'info', 4000)
         void actualizarCreditos()
       } else {
-        mostrar(`Sigue en camino: ${etapaDe({ ...c, estadoCrudo: pistas[0]?.estadoCrudo }).texto.toLowerCase()} ⏳`, 'info', 3500)
+        // v0.6.4: si la tarea ya tiene edad de muerta, no le vendemos
+        // ilusión al usuario aunque la API siga diciendo «PENDING».
+        const muerta = edadMin(c.fecha) >= MIN_TAREA_MUERTA
+        mostrar(
+          muerta
+            ? 'La API dice «en cola», pero a esta altura la tarea está muerta — los 12 créditos deberían haber vuelto solos (mirá el contador 💰 de arriba)'
+            : `Sigue en camino: ${etapaDe({ ...c, estadoCrudo: pistas[0]?.estadoCrudo }).texto.toLowerCase()} ⏳`,
+          'info',
+          5000,
+        )
       }
     } catch (e) {
       mostrar(e instanceof Error ? e.message : 'No se pudo consultar ahora', 'error', 4000)
@@ -758,17 +782,29 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
           />
         ) : (
           <ul className="space-y-2.5">
-            {canciones.map((c) => (
+            {canciones.map((c) => {
+              // v0.6.4: tarea «generando» con edad de muerta → la tarjeta
+              // cambia de cara (ámbar, sin spinner) y deja de prometer.
+              const muerta = c.estado === 'generando' && c.motor !== 'lyria' && edadMin(c.fecha) >= MIN_TAREA_MUERTA
+              return (
               <li
                 key={c.id}
-                className="rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900"
+                className={`rounded-2xl border p-4 ${
+                  muerta
+                    ? 'border-amber-400/60 bg-amber-50/60 dark:border-amber-500/40 dark:bg-amber-950/20'
+                    : 'border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900'
+                }`}
               >
                 <div className="flex items-start gap-3">
                   {c.urlPortada ? (
                     <img src={c.urlPortada} alt="" className="h-14 w-14 shrink-0 rounded-xl object-cover" referrerPolicy="no-referrer" />
                   ) : (
-                    <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-acento/10 text-acento">
-                      <Disc3 className={`h-6 w-6 ${c.estado === 'generando' ? 'animate-spin' : ''}`} />
+                    <span
+                      className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-xl ${
+                        muerta ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : 'bg-acento/10 text-acento'
+                      }`}
+                    >
+                      <Disc3 className={`h-6 w-6 ${c.estado === 'generando' && !muerta ? 'animate-spin' : ''}`} />
                     </span>
                   )}
                   <div className="min-w-0 flex-1">
@@ -785,10 +821,12 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                             ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
                             : c.estado === 'error'
                               ? 'bg-red-500/15 text-red-500'
-                              : 'bg-acento/15 text-acento'
+                              : muerta
+                                ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                                : 'bg-acento/15 text-acento'
                         }`}
                       >
-                        {c.estado === 'lista' ? '✓ Lista' : c.estado === 'error' ? 'Error' : 'Generando'}
+                        {c.estado === 'lista' ? '✓ Lista' : c.estado === 'error' ? 'Error' : muerta ? '⚠ Se cayó' : 'Generando'}
                       </span>
                     </div>
                     <p className="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400">
@@ -802,25 +840,41 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                         const et = etapaDe(c)
                         return (
                           <div className="mt-2">
-                            {/* Barrita de etapas: enviado ✓ → en cola → componiendo */}
+                            {/* Barrita de etapas: en tarea muerta se apaga
+                                (ámbar fijo) — ya no hay nada que esperar */}
                             <div className="flex items-center gap-1" aria-hidden="true">
                               {[1, 2, 3].map((p) => (
                                 <span
                                   key={p}
                                   className={`h-1.5 flex-1 rounded-full transition-colors ${
-                                    et.paso > p
-                                      ? 'bg-acento'
-                                      : et.paso === p
-                                        ? 'animate-pulse bg-acento'
-                                        : 'bg-neutral-200 dark:bg-neutral-800'
+                                    muerta
+                                      ? 'bg-amber-500/50'
+                                      : et.paso > p
+                                        ? 'bg-acento'
+                                        : et.paso === p
+                                          ? 'animate-pulse bg-acento'
+                                          : 'bg-neutral-200 dark:bg-neutral-800'
                                   }`}
                                 />
                               ))}
                             </div>
-                            <p className="mt-1.5 flex items-center gap-1.5 text-xs text-neutral-400">
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" /> {et.texto} · {minutosDesde(c.fecha)}
-                              {hintEdad(c.fecha)}
-                            </p>
+                            {muerta ? (
+                              <>
+                                <p className="mt-1.5 flex items-center gap-1.5 text-xs font-bold text-amber-600 dark:text-amber-400">
+                                  <Skull className="h-3.5 w-3.5 shrink-0" /> Esta generación se cayó — van {minutosDesde(c.fecha)} en la cola
+                                </p>
+                                <p className="mt-1 text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
+                                  A esta altura la tarea no viene más. Lo más probable es que Suno ya te haya devuelto los 12 créditos
+                                  de este pedido — mirá el contador 💰 de arriba. Podés quitar la tarjeta sin miedo, o hacerla ya
+                                  gratis en la cola oficial 👇
+                                </p>
+                              </>
+                            ) : (
+                              <p className="mt-1.5 flex items-center gap-1.5 text-xs text-neutral-400">
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" /> {et.texto} · {minutosDesde(c.fecha)}
+                                {hintEdad(c.fecha)}
+                              </p>
+                            )}
                             <button
                               type="button"
                               onClick={() => void revisarAhora(c)}
@@ -828,15 +882,19 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                               className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-neutral-400 transition-colors hover:text-acento disabled:opacity-50"
                             >
                               <RefreshCw className={`h-3 w-3 ${revisandoId === c.id ? 'animate-spin' : ''}`} />
-                              {revisandoId === c.id ? 'consultando…' : 'Revisar ahora'}
+                              {revisandoId === c.id ? 'consultando…' : muerta ? 'Verificar una última vez' : 'Revisar ahora'}
                             </button>
                             {/* 🚀 Válvula de escape: a los 20 min de cola, ofrecer
                                 la vía oficial gratis (misma letra, otros minutos). */}
-                            {Math.floor((Date.now() - c.fecha) / 60000) >= 20 && (
+                            {edadMin(c.fecha) >= 20 && (
                               <button
                                 type="button"
                                 onClick={() => void hacerlaYaEnSuno(c)}
-                                className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-acento/40 bg-acento/10 px-3 py-2 text-[11px] font-bold text-acento transition-colors hover:bg-acento/20"
+                                className={`mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-[11px] font-bold transition-colors ${
+                                  muerta
+                                    ? 'border-amber-500/60 bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300'
+                                    : 'border-acento/40 bg-acento/10 text-acento hover:bg-acento/20'
+                                }`}
                               >
                                 <Rocket className="h-3.5 w-3.5" /> Hacerla ya en suno.com — gratis, cola oficial (~2 min)
                               </button>
@@ -872,11 +930,12 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                 )}
                 {c.estado !== 'lista' && (
                   <Boton variante="fantasma" tamano="sm" className="mt-2 w-full" icono={<Trash2 className="h-3.5 w-3.5" />} onClick={() => borrar(c.id)}>
-                    Quitar de la lista
+                    {muerta ? 'Quitar la tarjeta caída' : 'Quitar de la lista'}
                   </Boton>
                 )}
               </li>
-            ))}
+              )
+            })}
           </ul>
         )}
       </section>

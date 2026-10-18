@@ -17,6 +17,15 @@ import type { Cancion } from '@/types'
 const CLAVE_CANCIONES = 'canciones'
 const MS_ENTRE_POLL = 6000
 
+// v0.6.4 — tareas viejas: pasada la hora y media, una tarea en la
+// cola del intermediario está casi segura muerta; consultarla cada
+// 6 s no la revive y quema llamadas (a las 8 h serían ~4.800).
+// Ciclo lento: 1 chequeo por minuto hasta que termine (o el usuario
+// toque «Verificar una última vez», que consulta al toque).
+const MS_ENTRE_POLL_VIEJAS = 60000
+const MS_TAREA_VIEJA = 90 * 60000
+const ultimoChequeo = new Map<string, number>()
+
 /** Evento window con la biblioteca actualizada como detail. */
 export const EVENTO_CANCIONES = 'musictrack:canciones-actualizadas'
 
@@ -90,6 +99,13 @@ async function tick(): Promise<void> {
   for (const tid of [...new Set(pendientes.map((c) => c.taskId))]) {
     const raiz = pendientes.find((c) => c.taskId === tid)
     if (!raiz) continue
+    if (
+      Date.now() - raiz.fecha > MS_TAREA_VIEJA &&
+      Date.now() - (ultimoChequeo.get(tid) ?? 0) < MS_ENTRE_POLL_VIEJAS
+    ) {
+      continue // tarea vieja: espera el ciclo lento
+    }
+    ultimoChequeo.set(tid, Date.now())
     try {
       const pistas = await consultarPistas(motor, tid, raiz.titulo)
       const actuales = leer<Cancion[]>(CLAVE_CANCIONES, [])
@@ -112,8 +128,12 @@ async function tick(): Promise<void> {
       )) {
         void notificar('😕 La generación falló', `«${n.titulo}» — Suno devuelve los créditos de esa generación`)
       }
-      // Grupo completo (nada generando) → cancelar el recordatorio.
-      if (!grupoDespues.some((c) => c.estado === 'generando')) void cancelarRecordatorio(tid)
+      // Grupo completo (nada generando) → cancelar el recordatorio
+      // y limpiar el registro del ciclo lento.
+      if (!grupoDespues.some((c) => c.estado === 'generando')) {
+        void cancelarRecordatorio(tid)
+        ultimoChequeo.delete(tid)
+      }
 
       window.dispatchEvent(new CustomEvent<Cancion[]>(EVENTO_CANCIONES, { detail: despues }))
     } catch {
