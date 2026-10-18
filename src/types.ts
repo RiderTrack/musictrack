@@ -184,6 +184,10 @@ export interface Cancion {
   varianteId?: string
   /** Letra de la versión dentro del grupo ('A', 'B'…). */
   version?: string
+  /** Letra enviada al motor (v0.6.1): permite la «válvula de escape»
+   * a suno.com en canciones trabadas en la cola, sin depender de que
+   * la letra siga existiendo en la biblioteca. */
+  letraTexto?: string
   estado: 'generando' | 'lista' | 'error'
   /** Estado tal cual lo reporta sunoapi.org (PENDING, TEXT_SUCCESS,
    * FIRST_SUCCESS…) — alimenta la barrita de etapas de la v0.4.5. */

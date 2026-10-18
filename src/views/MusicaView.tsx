@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Disc3, Download, Loader2, Music2, Piano, RefreshCw, Share2, Sparkles, Trash2, Wand2 } from 'lucide-react'
+import { Disc3, Download, Loader2, Music2, Piano, RefreshCw, Rocket, Share2, Sparkles, Trash2, Wand2 } from 'lucide-react'
 import { leerAjustes, leer, guardar, borrarClave } from '@/core/storage/almacenamiento'
 import { guardarAudio, leerAudio, borrarAudio } from '@/core/storage/audio'
 import { generarMusica, consultarPistas, creditosRestantes, type MotorSuno } from '@/core/ai/suno'
@@ -9,7 +9,7 @@ import { generarMusicaLyria, armarPromptLyria, type MotorLyria } from '@/core/ai
 import { Boton } from '@/components/ui/Boton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useToast } from '@/components/ui/Toast'
-import { compartir, vibrar, abrirURL } from '@/core/natives/plataforma'
+import { compartir, vibrar, abrirURL, copiarTexto } from '@/core/natives/plataforma'
 import {
   ESTILOS_RAPIDOS,
   GRUPOS_TAGS_ESTILO,
@@ -276,6 +276,7 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
           titulo: p.titulo || tituloLimpio,
           estilo: estiloLimpio,
           letraId: letraId || undefined,
+          letraTexto: instrumental ? undefined : textoLimpio,
           instrumental,
           modelo: ajustes.modeloSuno,
           motor: 'suno' as const,
@@ -336,6 +337,7 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
         titulo: tituloLimpio,
         estilo: estiloLimpio,
         letraId: letraId || undefined,
+        letraTexto: instrumental ? undefined : textoLimpio,
         instrumental,
         modelo: ajustes.modeloLyria,
         motor: 'lyria',
@@ -398,6 +400,25 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
       url: c.motor === 'lyria' ? undefined : c.urlAudio,
     })
     if (!ok) mostrar('Compartir no disponible en esta plataforma', 'info')
+  }
+
+  /** 🚀 Válvula de escape (v0.6.1): si la cola de sunoapi.org está
+   * muerta, la misma letra se puede musicalizar YA en suno.com con
+   * la cuenta Google (50 créditos/día, cola oficial — la misma que
+   * usan las apps que generan en minutos). No toca los créditos de
+   * la API ni cancela la tarea pendiente: si después llega, mejor. */
+  async function hacerlaYaEnSuno(c: Cancion) {
+    const letraTxt = c.letraTexto ?? letras.find((l) => l.id === c.letraId)?.texto ?? ''
+    vibrar()
+    const copiado = letraTxt ? await copiarTexto(letraTxt) : false
+    await abrirURL('https://suno.com/create')
+    mostrar(
+      copiado
+        ? `Letra de «${c.titulo}» copiada ✔ — en Suno usá Custom Mode y el estilo: ${c.estilo}`
+        : 'Abrí Custom Mode en Suno y pegá tu letra',
+      'info',
+      6500,
+    )
   }
 
   /** 💾 v0.6.0 — baja el MP3 al dispositivo: Lyria lo lee de
@@ -777,6 +798,17 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                               <RefreshCw className={`h-3 w-3 ${revisandoId === c.id ? 'animate-spin' : ''}`} />
                               {revisandoId === c.id ? 'consultando…' : 'Revisar ahora'}
                             </button>
+                            {/* 🚀 Válvula de escape: a los 20 min de cola, ofrecer
+                                la vía oficial gratis (misma letra, otros minutos). */}
+                            {Math.floor((Date.now() - c.fecha) / 60000) >= 20 && (
+                              <button
+                                type="button"
+                                onClick={() => void hacerlaYaEnSuno(c)}
+                                className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-acento/40 bg-acento/10 px-3 py-2 text-[11px] font-bold text-acento transition-colors hover:bg-acento/20"
+                              >
+                                <Rocket className="h-3.5 w-3.5" /> Hacerla ya en suno.com — gratis, cola oficial (~2 min)
+                              </button>
+                            )}
                           </div>
                         )
                       })()}

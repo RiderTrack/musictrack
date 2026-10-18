@@ -159,6 +159,10 @@ export async function generarMusica(
     method: 'POST',
     body: JSON.stringify({
       prompt: op.instrumental ? '' : op.letra,
+      // La API nueva prioriza `lyrics` sobre `prompt` cuando existe
+      // (docs.sunoapi.org, custom mode) — se mandan ambas por si la
+      // URL base del usuario apunta a una versión vieja de la API.
+      lyrics: op.instrumental ? '' : op.letra,
       style: op.estilo,
       title: op.titulo,
       customMode: true,
