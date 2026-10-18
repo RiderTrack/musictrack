@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Disc3, Loader2, Music2, Piano, RefreshCw, Share2, Sparkles, Trash2, Wand2 } from 'lucide-react'
 import { leerAjustes, leer, guardar, borrarClave } from '@/core/storage/almacenamiento'
 import { guardarAudio, leerAudio, borrarAudio } from '@/core/storage/audio'
-import { generarMusica, consultarPista, type MotorSuno } from '@/core/ai/suno'
+import { generarMusica, consultarPista, creditosRestantes, type MotorSuno } from '@/core/ai/suno'
 import { generarMusicaLyria, armarPromptLyria, type MotorLyria } from '@/core/ai/lyria'
 import { Boton } from '@/components/ui/Boton'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -92,6 +92,23 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
   const [canciones, setCanciones] = useState<Cancion[]>(() => leer<Cancion[]>(CLAVE_CANCIONES, []))
   const alVivo = useRef(true)
 
+  // Créditos de sunoapi.org a la vista (v0.4.4): se actualizan al
+  // entrar a la pestaña, al mandar un pedido y cuando una pista
+  // termina — así el gasto (y el reembolso si algo falla) se ven solos.
+  const [creditos, setCreditos] = useState<number | null>(null)
+  async function actualizarCreditos() {
+    if (!ajustes.tokenSuno) return
+    try {
+      setCreditos(await creditosRestantes({ url: ajustes.urlSuno, token: ajustes.tokenSuno }))
+    } catch {
+      /* el contador es informativo — si falla, no pasa nada */
+    }
+  }
+  useEffect(() => {
+    void actualizarCreditos()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Persistencia de la biblioteca
   useEffect(() => {
     guardar(CLAVE_CANCIONES, canciones)
@@ -146,6 +163,11 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
           if (pista.estado === 'lista') {
             vibrar()
             mostrar(`¡«${c.titulo}» lista! 🎧`, 'ok')
+            void actualizarCreditos()
+          }
+          if (pista.estado === 'error') {
+            mostrar(`«${c.titulo}» falló — Suno devuelve los créditos de esa generación`, 'info', 4500)
+            void actualizarCreditos()
           }
         } catch {
           /* sigue generando — el próximo tick reintenta */
@@ -224,6 +246,7 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
         }))
       if (!nuevas.length) throw new Error('La API no devolvió pistas')
       setCanciones((cs) => [...nuevas, ...cs])
+      void actualizarCreditos()
       mostrar(`${nuevas.length} ${nuevas.length === 1 ? 'versión' : 'versiones'} en el horno 🔥 — llegan en 1 a 3 min (en horas pico un poco más)`, 'ok', 4500)
     } catch (e) {
       mostrar(e instanceof Error ? e.message : 'Falló Suno', 'error', 4500)
@@ -475,6 +498,20 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                 ? 'Cada pedido crea 2 versiones · 1 a 3 min (más en horas pico) · modelo ' + (ajustes.modeloSuno ?? 'V4_5').replace('_', '.')
                 : 'Lyria devuelve la canción completa · requiere billing en Google AI Studio'}
             </p>
+            {motor === 'suno' && creditos !== null && (
+              <p className="flex items-center justify-center gap-1 text-center text-[11px] text-neutral-400">
+                <button
+                  type="button"
+                  onClick={() => void actualizarCreditos()}
+                  className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 hover:text-acento"
+                  title="Tocá para refrescar"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                </button>
+                Créditos en sunoapi.org:
+                <span className="font-bold text-neutral-600 dark:text-neutral-300">{creditos}</span>
+              </p>
+            )}
           </div>
         )}
       </section>

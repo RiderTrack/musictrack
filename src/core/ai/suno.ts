@@ -112,10 +112,10 @@ function pistaDesdeItem(item: Record<string, unknown>, tituloAlternativo?: strin
 }
 
 /**
- * Prueba de conexión: consulta los créditos restantes de la cuenta.
- * Sirve para el botón "Probar conexión" de Ajustes.
+ * Consulta los créditos restantes de la cuenta y los devuelve como
+ * número (null si la API no los informa). No consume créditos.
  */
-export async function consultarCreditos(motor: MotorSuno): Promise<string> {
+export async function creditosRestantes(motor: MotorSuno): Promise<number | null> {
   const r = await pedir(motor, '/api/v1/generate/credit')
   const d = r.data
   // Formato flexible: {credits: n} | [{credits: n, …}] | {creditsLeft: n, …}
@@ -132,7 +132,16 @@ export async function consultarCreditos(motor: MotorSuno): Promise<string> {
       if (primero && typeof primero.credits === 'number') creditos = primero.credits
     }
   }
-  return creditos !== undefined ? `Conectado — te quedan ${creditos} créditos` : 'Conectado ✔ (la API no informó créditos)'
+  return creditos ?? null
+}
+
+/**
+ * Prueba de conexión: consulta los créditos restantes de la cuenta.
+ * Sirve para el botón "Probar conexión" de Ajustes.
+ */
+export async function consultarCreditos(motor: MotorSuno): Promise<string> {
+  const creditos = await creditosRestantes(motor)
+  return creditos !== null ? `Conectado — te quedan ${creditos} créditos` : 'Conectado ✔ (la API no informó créditos)'
 }
 
 /**
