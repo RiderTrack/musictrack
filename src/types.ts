@@ -119,7 +119,51 @@ export const ESTILOS_RAPIDOS = [
   'pop latino, pegadizo, verano',
   'rock en español, guitarras distorsionadas',
   'R&B latino, suave, groovy',
+  'rock punk, energético, guitarras crudas',
+  'corrido tumbado, requinto, trompetas',
+  'synthwave, ochentero, sintetizadores',
+  'lo-fi hip hop, relajado, vinilo',
 ] as const
+
+/** Etiquetas de UN género para COMBINAR estilos (v0.6.0): tocás
+ * varias y se van sumando al campo estilo ("rock, punk, energético").
+ * Agrupadas para encontrarlas rápido en el formulario de Música. */
+export const GRUPOS_TAGS_ESTILO: { titulo: string; tags: string[] }[] = [
+  {
+    titulo: 'Urbano & latino',
+    tags: [
+      'Reggaetón',
+      'Trap',
+      'Hip-hop',
+      'Rap',
+      'R&B',
+      'Cumbia',
+      'Salsa',
+      'Merengue',
+      'Bachata',
+      'Vallenato',
+      'Corrido',
+      'Banda',
+      'Ranchera',
+      'Sertanejo',
+      'Tango',
+      'Huayno',
+      'Folclore andino',
+    ],
+  },
+  {
+    titulo: 'Rock & alternativo',
+    tags: ['Rock', 'Punk', 'Pop rock', 'Rock en español', 'Metal', 'Hard rock', 'Grunge', 'Indie', 'Alternativo', 'Emo', 'Ska'],
+  },
+  {
+    titulo: 'Pop, jazz & clásicos',
+    tags: ['Pop', 'Pop latino', 'Balada', 'Bolero', 'Disco', 'Funk', 'Soul', 'Jazz', 'Blues', 'Swing', 'Gospel', 'Acústico', 'Piano', 'Sinfónico'],
+  },
+  {
+    titulo: 'Electrónica & otros',
+    tags: ['Electrónica', 'EDM', 'House', 'Techno', 'Trance', 'Drum and bass', 'Synthwave', 'Lo-fi', 'Ambient', 'Chill', 'Reggae', 'K-pop', 'Country', 'Folk', '8-bit', 'Navideño'],
+  },
+]
 
 /** Una canción generada con Suno o Lyria a partir de una letra. */
 export interface Cancion {

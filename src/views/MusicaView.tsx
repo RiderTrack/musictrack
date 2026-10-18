@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Disc3, Loader2, Music2, Piano, RefreshCw, Share2, Sparkles, Trash2, Wand2 } from 'lucide-react'
+import { Disc3, Download, Loader2, Music2, Piano, RefreshCw, Share2, Sparkles, Trash2, Wand2 } from 'lucide-react'
 import { leerAjustes, leer, guardar, borrarClave } from '@/core/storage/almacenamiento'
 import { guardarAudio, leerAudio, borrarAudio } from '@/core/storage/audio'
 import { generarMusica, consultarPistas, creditosRestantes, type MotorSuno } from '@/core/ai/suno'
@@ -9,9 +9,10 @@ import { generarMusicaLyria, armarPromptLyria, type MotorLyria } from '@/core/ai
 import { Boton } from '@/components/ui/Boton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useToast } from '@/components/ui/Toast'
-import { compartir, vibrar } from '@/core/natives/plataforma'
+import { compartir, vibrar, abrirURL } from '@/core/natives/plataforma'
 import {
   ESTILOS_RAPIDOS,
+  GRUPOS_TAGS_ESTILO,
   MODELOS_LYRIA,
   type Cancion,
   type Letra,
@@ -60,6 +61,25 @@ function hintEdad(fecha: number): string {
   if (min <= 3) return ''
   if (min <= 9) return ' — en horas pico la cola se demora'
   return ' — si falla, Suno devuelve los créditos solos'
+}
+
+/** Nombre de archivo seguro para el MP3 que se descarga. */
+function nombreMp3(titulo: string): string {
+  const limpio = titulo.replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, ' ').trim()
+  return `${limpio || 'Mi canción'} - MusicTrack.mp3`
+}
+
+/** Dispara la descarga de un blob en el navegador/WebView. */
+function guardarBlob(blob: Blob, nombre: string): void {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = nombre
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  // el blob vive en memoria: revocar tarde para no cortar la descarga
+  window.setTimeout(() => URL.revokeObjectURL(url), 30000)
 }
 
 /** Reproductor que resuelve el audio venga de CDN (Suno) o IndexedDB (Lyria). */
@@ -194,6 +214,25 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
       setTitulo('')
       setEstilo('')
     }
+  }
+
+  // 🎛️ v0.6.0 — COMBINAR estilos: cada etiqueta tocada se suma
+  // (o se quita) al campo estilo, separada por comas. El campo
+  // sigue siendo texto libre: las etiquetas solo escriben por vos.
+  const partesEstilo = estilo
+    .split(',')
+    .map((p) => p.trim().toLowerCase())
+    .filter(Boolean)
+  function alternarTag(tag: string) {
+    vibrar()
+    const partes = estilo
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean)
+    const i = partes.findIndex((p) => p.toLowerCase() === tag.toLowerCase())
+    if (i >= 0) partes.splice(i, 1)
+    else partes.push(tag.toLowerCase())
+    setEstilo(partes.join(', '))
   }
 
   async function generar() {
@@ -361,6 +400,40 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
     if (!ok) mostrar('Compartir no disponible en esta plataforma', 'info')
   }
 
+  /** 💾 v0.6.0 — baja el MP3 al dispositivo: Lyria lo lee de
+   * IndexedDB; Suno lo baja del CDN. Si el CDN bloquea (CORS) o
+   * la red no da, abre el audio en pestaña nueva para guardarlo. */
+  const [bajandoId, setBajandoId] = useState<string | null>(null)
+  async function descargarMp3(c: Cancion) {
+    if (bajandoId || (!c.urlAudio && !c.audioLocal)) return
+    setBajandoId(c.id)
+    try {
+      let blob: Blob | null = null
+      if (c.audioLocal) {
+        const dataUrl = await leerAudio(c.id)
+        if (!dataUrl) throw new Error('sin audio local')
+        blob = await (await fetch(dataUrl)).blob()
+      } else if (c.urlAudio) {
+        const resp = await fetch(c.urlAudio)
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+        blob = await resp.blob()
+      }
+      if (!blob) throw new Error('sin audio')
+      guardarBlob(blob, nombreMp3(c.titulo))
+      vibrar()
+      mostrar('MP3 guardado en tus descargas 💾', 'ok')
+    } catch {
+      if (c.urlAudio) {
+        await abrirURL(c.urlAudio)
+        mostrar('No pude bajarla directo — la abrí para que la guardes', 'info', 4500)
+      } else {
+        mostrar('No encontré el audio de esa canción', 'error')
+      }
+    } finally {
+      setBajandoId(null)
+    }
+  }
+
   const claseInput =
     'h-11 w-full rounded-xl border border-neutral-300 bg-transparent px-3 text-sm outline-none transition-colors focus:border-acento dark:border-neutral-700'
   const generando = canciones.filter((c) => c.estado === 'generando').length
@@ -475,32 +548,73 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
 
             <label className="block">
               <span className="mb-1 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">
-                Estilo (géneros, instrumentos, BPM, mood — lo que el motor lee bien)
+                Estilo — combiná etiquetas abajo o escribí lo que quieras
               </span>
               <input
                 value={estilo}
                 onChange={(e) => setEstilo(e.target.value)}
                 maxLength={200}
-                placeholder="reggaetón, dembow, perreo, 96 bpm"
+                placeholder="rock, punk, energético, 120 bpm"
                 className={claseInput}
               />
             </label>
 
-            <div className="flex flex-wrap gap-2">
-              {ESTILOS_RAPIDOS.slice(0, 4).map((e) => (
-                <button
-                  key={e}
-                  type="button"
-                  onClick={() => setEstilo(e)}
-                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                    estilo === e
-                      ? 'border-acento bg-acento text-white'
-                      : 'border-neutral-300 bg-transparent text-neutral-500 hover:border-acento/60 dark:border-neutral-700 dark:text-neutral-400'
-                  }`}
-                >
-                  {e.split(',')[0]}
-                </button>
+            {/* 🎛️ v0.6.0 — tags para COMBINAR estilos: cada toque suma
+                o quita el género del campo estilo. */}
+            <div className="space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                Combinar estilos <span className="font-medium normal-case">(tocá para sumar ✓ o quitar)</span>
+              </p>
+              {GRUPOS_TAGS_ESTILO.map((g) => (
+                <div key={g.titulo}>
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-400/80">{g.titulo}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {g.tags.map((t) => {
+                      const activo = partesEstilo.includes(t.toLowerCase())
+                      return (
+                        <button
+                          key={t}
+                          type="button"
+                          aria-pressed={activo}
+                          onClick={() => alternarTag(t)}
+                          className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                            activo
+                              ? 'border-acento bg-acento/15 text-acento'
+                              : 'border-neutral-200 bg-transparent text-neutral-500 hover:border-acento/60 dark:border-neutral-700 dark:text-neutral-400'
+                          }`}
+                        >
+                          {activo ? `✓ ${t}` : t}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
               ))}
+            </div>
+
+            {/* Recetas completas (género + instrumentos + BPM): tocar
+                una REEMPLAZA el estilo entero. */}
+            <div>
+              <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                Recetas rápidas <span className="font-medium normal-case">(reemplazan el estilo)</span>
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {ESTILOS_RAPIDOS.map((e) => (
+                  <button
+                    key={e}
+                    type="button"
+                    onClick={() => setEstilo(e)}
+                    title={e}
+                    className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                      estilo === e
+                        ? 'border-acento bg-acento text-white'
+                        : 'border-neutral-200 bg-transparent text-neutral-500 hover:border-acento/60 dark:border-neutral-700 dark:text-neutral-400'
+                    }`}
+                  >
+                    {e.split(',')[0]}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <button
@@ -674,9 +788,18 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                 </div>
 
                 {c.estado === 'lista' && (
-                  <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="mt-3 grid grid-cols-3 gap-2">
                     <Boton variante="secundario" tamano="sm" icono={<Share2 className="h-3.5 w-3.5" />} onClick={() => compartirCancion(c)}>
                       Compartir
+                    </Boton>
+                    <Boton
+                      variante="secundario"
+                      tamano="sm"
+                      icono={<Download className="h-3.5 w-3.5" />}
+                      cargando={bajandoId === c.id}
+                      onClick={() => void descargarMp3(c)}
+                    >
+                      MP3
                     </Boton>
                     <Boton variante="fantasma" tamano="sm" icono={<Trash2 className="h-3.5 w-3.5" />} onClick={() => borrar(c.id)}>
                       Eliminar
