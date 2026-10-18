@@ -43,6 +43,31 @@ function base(url: string): string {
   return url.trim().replace(/\/+$/, '')
 }
 
+// sunoapi.org exige callBackUrl desde octubre de 2026 (antes era
+// opcional): es a donde POSTea el resultado cuando la canción
+// está lista. MusicTrack usa polling (/record-info), así que el
+// callback no se necesita para nada — se manda la URL pública de
+// la web de la app solo para satisfacer la validación de la API.
+const CALLBACK_URL = 'https://ridertrack.github.io/musictrack/'
+
+/** Traduce los errores más comunes de sunoapi.org (llegan en
+ * inglés) para que el toast se entienda a la primera.
+ * Los desconocidos pasan sin tocar. */
+function traducirErrorSuno(msg: string): string {
+  const m = msg.toLowerCase()
+  if (m.includes('unauthorized') || m.includes('authentication failed'))
+    return 'clave de Suno inválida o expirada — pegála de nuevo en Ajustes'
+  if (m.includes('callbackurl'))
+    return 'la API pide la URL de callback (ya corregida — actualizá tu APK desde Releases)'
+  if (m.includes('insufficient') || m.includes('credit'))
+    return 'no te alcanzan los créditos en sunoapi.org — cargá más o cambiá al motor Lyria'
+  if (m.includes('content') || m.includes('sensitive') || m.includes('policy'))
+    return 'Suno rechazó el contenido — suavizá la letra o el estilo y probá de nuevo'
+  if (m.includes('rate') || m.includes('too many'))
+    return 'demasiados pedidos seguidos — esperá unos segundos y reintentá'
+  return msg
+}
+
 async function pedir(motor: MotorSuno, ruta: string, init?: RequestInit): Promise<RespuestaSuno> {
   let resp: Response
   try {
@@ -66,7 +91,7 @@ async function pedir(motor: MotorSuno, ruta: string, init?: RequestInit): Promis
   // ⚠️ El servidor devuelve HTTP 200 con el error en el cuerpo.
   const codigo = cuerpo?.code ?? resp.status
   if (codigo !== 200) {
-    throw new Error(`Suno API: ${cuerpo?.msg ?? `${resp.status} ${resp.statusText}`}`)
+    throw new Error(`Suno API: ${traducirErrorSuno(cuerpo?.msg ?? `${resp.status} ${resp.statusText}`)}`)
   }
   return cuerpo ?? {}
 }
@@ -128,6 +153,7 @@ export async function generarMusica(
       customMode: true,
       instrumental: op.instrumental,
       model: op.modelo,
+      callBackUrl: CALLBACK_URL,
     }),
   })
   const d = r.data

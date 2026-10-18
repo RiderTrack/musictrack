@@ -98,6 +98,24 @@ function desenvolver(data: unknown): unknown {
   return Array.isArray(data) && data.length === 1 ? data[0] : data
 }
 
+/** Traduce los errores más comunes de la API de Google (llegan
+ * en inglés) para que el toast se entienda a la primera.
+ * Los desconocidos pasan sin tocar. */
+function traducirErrorLyria(msg: string): string {
+  const m = msg.toLowerCase()
+  if (m.includes('api key not valid') || m.includes('api_key_invalid'))
+    return 'la API key de Google no es válida — generá otra en aistudio.google.com y pegála en Ajustes'
+  if (m.includes('prepayment') || m.includes('prepaid') || m.includes('depleted') || m.includes('billing'))
+    return 'créditos de Google agotados o sin billing — cargá saldo en ai.studio/projects (Lyria no tiene capa gratis) o usá el botón gratis de suno.com'
+  if (m.includes('quota'))
+    return 'alcanzaste el límite de uso de Google — revisá tu cuota en AI Studio'
+  if (m.includes('permission') || m.includes('denied'))
+    return 'la API key no tiene acceso a Lyria — habilitá el modelo en aistudio.google.com (con billing activo)'
+  if (m.includes('not found'))
+    return 'el modelo no existe o no está disponible para tu clave — verificá el modelo en Ajustes'
+  return msg
+}
+
 async function llamar(token: string, cuerpo: unknown): Promise<Nodo> {
   const controlador = new AbortController()
   const reloj = window.setTimeout(() => controlador.abort(), TIMEOUT_MS)
@@ -128,7 +146,7 @@ async function llamar(token: string, cuerpo: unknown): Promise<Nodo> {
   }
   const data = desenvolver(crudo) as (Nodo & { error?: ErrorGoogle }) | null
   if (!resp.ok || data?.error) {
-    throw new Error(`Lyria: ${data?.error?.message ?? `${resp.status} ${resp.statusText}`}`)
+    throw new Error(`Lyria: ${traducirErrorLyria(data?.error?.message ?? `${resp.status} ${resp.statusText}`)}`)
   }
   return data ?? {}
 }
@@ -170,7 +188,7 @@ export async function probarLyria(motor: MotorLyria): Promise<string> {
   }
   const data = desenvolver(crudo) as { error?: ErrorGoogle } | null
   if (!resp.ok || data?.error) {
-    throw new Error(`Lyria: ${data?.error?.message ?? `${resp.status} ${resp.statusText}`}`)
+    throw new Error(`Lyria: ${traducirErrorLyria(data?.error?.message ?? `${resp.status} ${resp.statusText}`)}`)
   }
   return '¡Lyria conectado! 🎹 (recordá: los modelos de música requieren billing activo)'
 }
