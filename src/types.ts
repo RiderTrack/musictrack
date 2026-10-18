@@ -28,6 +28,32 @@ export const AJUSTES_POR_DEFECTO: Ajustes = {
   onboardingVisto: false,
 }
 
+/** Modelos de Claude que escriben las letras (v0.7.0): el usuario
+ * los cambia desde Crear o Ajustes según cuánto quiera gastar.
+ * Haiku = rápido y barato · Sonnet = equilibrado · Opus = premium. */
+export const MODELOS_CLAUDE = [
+  {
+    id: 'claude-haiku-4-5-20251001',
+    etiqueta: 'Haiku 4.5',
+    detalle: 'rápido y económico — letras en segundos',
+  },
+  {
+    id: 'claude-sonnet-4-5-20250929',
+    etiqueta: 'Sonnet 4.5',
+    detalle: 'recomendado — mejor calidad-tiempo-precio',
+  },
+  {
+    id: 'claude-opus-4-5-20251101',
+    etiqueta: 'Opus 4.5',
+    detalle: 'máxima calidad — más lento y caro',
+  },
+] as const
+
+/** ¿El modelo elegido es uno de la lista o uno escrito a mano? */
+export function modeloClaudeConocido(id: string): boolean {
+  return MODELOS_CLAUDE.some((m) => m.id === id)
+}
+
 export interface Sesion {
   uid: string
   nombre: string
@@ -52,11 +78,18 @@ export const GENEROS_MUSICALES = [
   'Merengue',
   'Corrido / Regional mexicano',
   'Rock en español',
+  'Rock',
+  'Nu metal',
+  'Metal / Punk',
   'Pop rock',
+  'Indie / Alternativo',
   'Hip-hop / Rap',
   'R&B',
   'Folclore andino',
   'Sertanejo',
+  'Bossa nova',
+  'Tango',
+  'Flamenco',
   'K-pop',
   'Electronic / EDM',
 ] as const
@@ -72,7 +105,15 @@ export const MOODS = [
   'Fiesta',
   'Nostálgica',
   'Tranquila',
+  'Épica',
+  'Oscura',
+  'Dramática',
 ] as const
+
+/** ¿Quién canta la canción? (v0.7.0) — se usa al crear la
+ * letra (Claude la escribe pensando en esa voz) y al musicalizar
+ * (se agrega al estilo de Suno). */
+export const VOZ_CANTANTE = ['Cualquiera', 'Masculina', 'Femenina', 'Dúo'] as const
 
 export const ESTRUCTURAS = [
   { id: 'sencilla', etiqueta: 'Sencilla', detalle: 'corta: 1 verso + coro (12 a 16 líneas)' },
@@ -91,6 +132,9 @@ export interface Letra {
   estructura: string
   texto: string
   origen: 'ia' | 'propia'
+  /** Voz pensada para cantarla (v0.7.0): 'Masculina', 'Femenina',
+   * 'Dúo' — viaja con la letra hasta el estilo de Suno. */
+  voz?: string
   fecha: number
 }
 
@@ -156,7 +200,9 @@ export const ESTILOS_RAPIDOS = [
 
 /** Etiquetas de UN género para COMBINAR estilos (v0.6.0): tocás
  * varias y se van sumando al campo estilo ("rock, punk, energético").
- * Agrupadas para encontrarlas rápido en el formulario de Música. */
+ * Agrupadas para encontrarlas rápido en el formulario de Música.
+ * v0.7.0: rock & metal ampliado (Nu metal, Metalcore, Thrash…),
+ * más ritmos latinos y electrónica moderna. */
 export const GRUPOS_TAGS_ESTILO: { titulo: string; tags: string[] }[] = [
   {
     titulo: 'Urbano & latino',
@@ -178,21 +224,131 @@ export const GRUPOS_TAGS_ESTILO: { titulo: string; tags: string[] }[] = [
       'Tango',
       'Huayno',
       'Folclore andino',
+      'Son cubano',
+      'Mariachi',
+      'Dancehall',
+      'Afrobeats',
     ],
   },
   {
-    titulo: 'Rock & alternativo',
-    tags: ['Rock', 'Punk', 'Pop rock', 'Rock en español', 'Metal', 'Hard rock', 'Grunge', 'Indie', 'Alternativo', 'Emo', 'Ska'],
+    titulo: 'Rock & metal',
+    tags: [
+      'Rock',
+      'Punk',
+      'Pop rock',
+      'Rock en español',
+      'Hard rock',
+      'Grunge',
+      'Indie',
+      'Alternativo',
+      'Emo',
+      'Ska',
+      'Post-punk',
+      'Rock progresivo',
+      'Rock psicodélico',
+      'Stoner rock',
+      'Metal',
+      'Nu metal',
+      'Metalcore',
+      'Thrash metal',
+      'Death metal',
+      'Power metal',
+      'Doom metal',
+      'Industrial',
+    ],
   },
   {
     titulo: 'Pop, jazz & clásicos',
-    tags: ['Pop', 'Pop latino', 'Balada', 'Bolero', 'Disco', 'Funk', 'Soul', 'Jazz', 'Blues', 'Swing', 'Gospel', 'Acústico', 'Piano', 'Sinfónico'],
+    tags: [
+      'Pop',
+      'Pop latino',
+      'Balada',
+      'Bolero',
+      'Disco',
+      'Funk',
+      'Soul',
+      'Jazz',
+      'Blues',
+      'Swing',
+      'Gospel',
+      'Bossa nova',
+      'Flamenco',
+      'Acústico',
+      'Piano',
+      'Sinfónico',
+    ],
   },
   {
     titulo: 'Electrónica & otros',
-    tags: ['Electrónica', 'EDM', 'House', 'Techno', 'Trance', 'Drum and bass', 'Synthwave', 'Lo-fi', 'Ambient', 'Chill', 'Reggae', 'K-pop', 'Country', 'Folk', '8-bit', 'Navideño'],
+    tags: [
+      'Electrónica',
+      'EDM',
+      'House',
+      'Techno',
+      'Trance',
+      'Drum and bass',
+      'Synthwave',
+      'Lo-fi',
+      'Phonk',
+      'Ambient',
+      'Chill',
+      'Reggae',
+      'K-pop',
+      'Country',
+      'Folk',
+      '8-bit',
+      'Navideño',
+    ],
   },
 ]
+
+/** 🎚️ Carácter de la canción (v0.7.0): se suman al estilo como
+ * adjetivos que Suno entiende ("energética, épica"). Se pueden
+ * tocar varias a la vez. */
+export const ENERGIAS_ESTILO = [
+  'Enérgica',
+  'Tranquila',
+  'Épica',
+  'Agresiva',
+  'Alegre',
+  'Melancólica',
+  'Romántica',
+  'Oscura',
+  'Nostálgica',
+  'Dramática',
+  'Sexy',
+  'Motivacional',
+] as const
+
+/** 🎤 Instrumentos protagonistas (v0.7.0): se suman al estilo
+ * ("piano, cuerdas, trompetas"). Se pueden tocar varios. */
+export const INSTRUMENTOS_ESTILO = [
+  'Guitarra eléctrica',
+  'Guitarra acústica',
+  'Guitarra distorsionada',
+  'Piano',
+  'Sintetizadores',
+  'Bajo',
+  'Batería',
+  'Percusión',
+  'Trompetas',
+  'Saxofón',
+  'Cuerdas',
+  'Órgano',
+  'Coros',
+  '808',
+  'Riffs pesados',
+  'Solo de guitarra',
+] as const
+
+/** ⏱️ Tempo (v0.7.0): EXCLUSIVO — elegir uno quita el anterior.
+ * El chip muestra la idea y agrega el BPM al estilo. */
+export const TEMPOS_ESTILO = [
+  { etiqueta: 'Lenta · balada', tag: '70 bpm' },
+  { etiqueta: 'Media · groove', tag: '100 bpm' },
+  { etiqueta: 'Rápida · bailable', tag: '128 bpm' },
+  { etiqueta: 'Acelerada · mosh', tag: '160 bpm' },
+] as const
 
 /** Una canción generada con Suno o Lyria a partir de una letra. */
 export interface Cancion {

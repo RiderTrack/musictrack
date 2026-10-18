@@ -11,9 +11,13 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { useToast } from '@/components/ui/Toast'
 import { compartir, vibrar, abrirURL, copiarTexto } from '@/core/natives/plataforma'
 import {
+  ENERGIAS_ESTILO,
   ESTILOS_RAPIDOS,
   GRUPOS_TAGS_ESTILO,
+  INSTRUMENTOS_ESTILO,
   MODELOS_LYRIA,
+  TEMPOS_ESTILO,
+  VOZ_CANTANTE,
   modeloSunoBonito,
   type Cancion,
   type Letra,
@@ -32,6 +36,16 @@ import {
 
 const CLAVE_CANCIONES = 'canciones'
 const CLAVE_LETRA_A_MUSICALIZAR = 'letraMusicalizar'
+
+/** Chip del estudio de estilo (v0.7.0): mismo look para géneros,
+ * energía, voz, instrumentos y tempo. */
+function claseChip(activo: boolean): string {
+  return `rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+    activo
+      ? 'border-acento bg-acento/15 text-acento'
+      : 'border-neutral-200 bg-transparent text-neutral-500 hover:border-acento/60 dark:border-neutral-700 dark:text-neutral-400'
+  }`
+}
 
 /** Minutos a partir de los cuales damos una tarea por MUERTA (v0.6.4):
  * la cola del intermediario en el peor caso llega a ~60 min; pasada
@@ -187,7 +201,7 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
       setLetraId(letra.id)
       setTexto(letra.texto)
       setTitulo(letra.titulo)
-      setEstilo([letra.genero, letra.mood].filter(Boolean).join(', ').toLowerCase())
+      setEstilo(estiloDesdeLetra(letra))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -227,12 +241,26 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
     if (letra) {
       setTexto(letra.texto)
       setTitulo(letra.titulo)
-      setEstilo([letra.genero, letra.mood].filter(Boolean).join(', ').toLowerCase())
+      setEstilo(estiloDesdeLetra(letra))
     } else {
       setTexto('')
       setTitulo('')
       setEstilo('')
     }
+  }
+
+  /** v0.7.0 — el estilo inicial al llegar una letra de la
+   * biblioteca: género + mood + voz (si la letra la definió). */
+  function estiloDesdeLetra(letra: Letra): string {
+    const vozTag =
+      letra.voz === 'Masculina'
+        ? 'voz masculina'
+        : letra.voz === 'Femenina'
+          ? 'voz femenina'
+          : letra.voz === 'Dúo'
+            ? 'dúo de voces'
+            : ''
+    return [letra.genero, letra.mood, vozTag].filter(Boolean).join(', ').toLowerCase()
   }
 
   // 🎛️ v0.6.0 — COMBINAR estilos: cada etiqueta tocada se suma
@@ -252,6 +280,48 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
     if (i >= 0) partes.splice(i, 1)
     else partes.push(tag.toLowerCase())
     setEstilo(partes.join(', '))
+  }
+
+  // 🎤 v0.7.0 — VOZ: exclusiva (elegir una quita la otra). Se
+  // agrega al estilo como tag que Suno entiende y respeta.
+  const TAGS_VOZ = ['voz masculina', 'voz femenina', 'dúo de voces']
+  const vozActiva = partesEstilo.includes('voz masculina')
+    ? 'Masculina'
+    : partesEstilo.includes('voz femenina')
+      ? 'Femenina'
+      : partesEstilo.includes('dúo de voces')
+        ? 'Dúo'
+        : 'Cualquiera'
+  function fijarVoz(v: string) {
+    vibrar()
+    const partes = estilo
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean)
+    const sinVoz = partes.filter((p) => !TAGS_VOZ.includes(p.toLowerCase()))
+    const tag = v === 'Masculina' ? 'voz masculina' : v === 'Femenina' ? 'voz femenina' : 'dúo de voces'
+    // tocar la voz activa la apaga (vuelve a Cualquiera)
+    if (v === 'Cualquiera' || partes.some((p) => p.toLowerCase() === tag)) {
+      setEstilo(sinVoz.join(', '))
+      return
+    }
+    setEstilo([...sinVoz, tag].join(', '))
+  }
+
+  // ⏱️ v0.7.0 — TEMPO: exclusivo, agrega el BPM al estilo.
+  const TAGS_TEMPO: string[] = TEMPOS_ESTILO.map((t) => t.tag)
+  function fijarTempo(tag: string) {
+    vibrar()
+    const partes = estilo
+      .split(',')
+      .map((p) => p.trim())
+      .filter(Boolean)
+    const sinTempo = partes.filter((p) => !TAGS_TEMPO.includes(p.toLowerCase()))
+    if (partes.some((p) => p.toLowerCase() === tag)) {
+      setEstilo(sinTempo.join(', '))
+      return
+    }
+    setEstilo([...sinTempo, tag].join(', '))
   }
 
   async function generar() {
@@ -613,50 +683,157 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
               </label>
             </div>
 
-            <label className="block">
+            <div>
               <span className="mb-1 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">
-                Estilo — combiná etiquetas abajo o escribí lo que quieras
+                Estilo — tocá las etiquetas de abajo o escribí lo que quieras
               </span>
-              <input
-                value={estilo}
-                onChange={(e) => setEstilo(e.target.value)}
-                maxLength={200}
-                placeholder="rock, punk, energético, 120 bpm"
-                className={claseInput}
-              />
-            </label>
+              <div className="relative">
+                <input
+                  value={estilo}
+                  onChange={(e) => setEstilo(e.target.value)}
+                  maxLength={200}
+                  placeholder="rock, punk, enérgica, voz masculina, 120 bpm"
+                  className={`${claseInput} pr-20`}
+                />
+                {estilo && (
+                  <button
+                    type="button"
+                    onClick={() => setEstilo('')}
+                    title="Vaciar el estilo"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full px-2 py-1 text-[10px] font-bold text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-acento dark:hover:bg-neutral-800"
+                  >
+                    🧹 limpiar
+                  </button>
+                )}
+              </div>
+            </div>
 
-            {/* 🎛️ v0.6.0 — tags para COMBINAR estilos: cada toque suma
-                o quita el género del campo estilo. */}
+            {/* 🎛️ v0.7.0 — ESTUDIO DE ESTILO: géneros + energía +
+                voz + instrumentos + tempo. Todo lo que tocás se suma
+                (o quita) del campo estilo de arriba. Los grupos de
+                géneros se pliegan para no eternizar el formulario. */}
             <div className="space-y-2">
               <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">
-                Combinar estilos <span className="font-medium normal-case">(tocá para sumar ✓ o quitar)</span>
+                Armar el estilo <span className="font-medium normal-case">(tocá para sumar ✓ o quitar)</span>
               </p>
-              {GRUPOS_TAGS_ESTILO.map((g) => (
-                <div key={g.titulo}>
-                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-400/80">{g.titulo}</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {g.tags.map((t) => {
-                      const activo = partesEstilo.includes(t.toLowerCase())
-                      return (
-                        <button
-                          key={t}
-                          type="button"
-                          aria-pressed={activo}
-                          onClick={() => alternarTag(t)}
-                          className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
-                            activo
-                              ? 'border-acento bg-acento/15 text-acento'
-                              : 'border-neutral-200 bg-transparent text-neutral-500 hover:border-acento/60 dark:border-neutral-700 dark:text-neutral-400'
-                          }`}
-                        >
-                          {activo ? `✓ ${t}` : t}
-                        </button>
-                      )
-                    })}
-                  </div>
+              {GRUPOS_TAGS_ESTILO.map((g, i) => {
+                const activos = g.tags.filter((t) => partesEstilo.includes(t.toLowerCase())).length
+                return (
+                  <details
+                    key={g.titulo}
+                    open={i === 0}
+                    className="group rounded-xl border border-neutral-200 dark:border-neutral-800"
+                  >
+                    <summary className="flex cursor-pointer select-none list-none items-center justify-between px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400 [&::-webkit-details-marker]:hidden">
+                      <span>{g.titulo}</span>
+                      <span className="flex items-center gap-1.5">
+                        {activos > 0 && (
+                          <span className="rounded-full bg-acento/15 px-1.5 py-0.5 text-[10px] font-bold text-acento">
+                            {activos} ✓
+                          </span>
+                        )}
+                        <span className="text-neutral-400 transition-transform group-open:rotate-90">▸</span>
+                      </span>
+                    </summary>
+                    <div className="flex flex-wrap gap-1.5 border-t border-neutral-100 px-3 py-2.5 dark:border-neutral-800/60">
+                      {g.tags.map((t) => {
+                        const activo = partesEstilo.includes(t.toLowerCase())
+                        return (
+                          <button
+                            key={t}
+                            type="button"
+                            aria-pressed={activo}
+                            onClick={() => alternarTag(t)}
+                            className={claseChip(activo)}
+                          >
+                            {activo ? `✓ ${t}` : t}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </details>
+                )
+              })}
+
+              {/* 🎚️ Energía y carácter: se suman las que quieras. */}
+              <div>
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-400/80">
+                  Energía y carácter <span className="font-medium normal-case">(enérgica, tranquila…)</span>
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {ENERGIAS_ESTILO.map((e) => {
+                    const activo = partesEstilo.includes(e.toLowerCase())
+                    return (
+                      <button key={e} type="button" aria-pressed={activo} onClick={() => alternarTag(e)} className={claseChip(activo)}>
+                        {activo ? `✓ ${e}` : e}
+                      </button>
+                    )
+                  })}
                 </div>
-              ))}
+              </div>
+
+              {/* 🎤 Voz: EXCLUSIVA — elegir una quita la otra. */}
+              <div>
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-400/80">
+                  Voz <span className="font-medium normal-case">(una sola)</span>
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {VOZ_CANTANTE.map((v) => {
+                    const activo = vozActiva === v
+                    return (
+                      <button key={v} type="button" aria-pressed={activo} onClick={() => fijarVoz(v)} className={claseChip(activo)}>
+                        {activo ? `✓ ${v}` : v}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* 🎻 Instrumentos protagonistas: se suman varios. */}
+              <div>
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-400/80">
+                  Instrumentos protagonistas <span className="font-medium normal-case">(se suman)</span>
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {INSTRUMENTOS_ESTILO.map((ins) => {
+                    const activo = partesEstilo.includes(ins.toLowerCase())
+                    return (
+                      <button
+                        key={ins}
+                        type="button"
+                        aria-pressed={activo}
+                        onClick={() => alternarTag(ins)}
+                        className={claseChip(activo)}
+                      >
+                        {activo ? `✓ ${ins}` : ins}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* ⏱️ Tempo: EXCLUSIVO — agrega el BPM al estilo. */}
+              <div>
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-400/80">
+                  Tempo <span className="font-medium normal-case">(uno solo)</span>
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {TEMPOS_ESTILO.map((t) => {
+                    const activo = partesEstilo.includes(t.tag)
+                    return (
+                      <button
+                        key={t.etiqueta}
+                        type="button"
+                        aria-pressed={activo}
+                        onClick={() => fijarTempo(t.tag)}
+                        className={claseChip(activo)}
+                      >
+                        {activo ? `✓ ${t.etiqueta}` : t.etiqueta}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
             </div>
 
             {/* Recetas completas (género + instrumentos + BPM): tocar

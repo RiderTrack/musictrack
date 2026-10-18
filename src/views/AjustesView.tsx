@@ -13,7 +13,7 @@ import { Boton } from '@/components/ui/Boton'
 import { firebaseConfigurado } from '@/services/firebase'
 import { plataformaActual, vibrar, abrirURL } from '@/core/natives/plataforma'
 import { buscarUltimaVersion, esMasNueva, type InfoActualizacion } from '@/core/actualizacion/actualizacion'
-import { AJUSTES_POR_DEFECTO, MODELOS_LYRIA, MODELOS_SUNO, MODELOS_SUNO_VIEJOS, type Ajustes, type Tema } from '@/types'
+import { AJUSTES_POR_DEFECTO, MODELOS_CLAUDE, MODELOS_LYRIA, MODELOS_SUNO, MODELOS_SUNO_VIEJOS, modeloClaudeConocido, type Ajustes, type Tema } from '@/types'
 
 // ═══════════════════════════════════════════════════════════
 // ⚙️ AJUSTES — el panel de control del esqueleto:
@@ -216,13 +216,34 @@ export function AjustesView() {
             </button>
           </div>
         </div>
-        <label className="mb-1 mt-3 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">Modelo</label>
-        <input
-          value={ajustes.modeloIA}
-          onChange={(e) => actualizar({ modeloIA: e.target.value.trim() })}
-          placeholder="claude-sonnet-4-5-20250929"
-          className="h-11 w-full rounded-xl border border-neutral-300 bg-transparent px-3 text-sm outline-none transition-colors placeholder:text-neutral-400 focus:border-acento dark:border-neutral-700"
-        />
+        {/* 🤖 v0.7.0 — selector de modelo con opciones claras; si
+            el valor guardado es de otra versión, entra el modo
+            «Personalizado» para no romper nada. */}
+        <label className="mb-1 mt-3 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+          Modelo — también lo cambiás al crear letras
+        </label>
+        <select
+          value={modeloClaudeConocido(ajustes.modeloIA) ? ajustes.modeloIA : 'personalizado'}
+          onChange={(e) => {
+            if (e.target.value !== 'personalizado') actualizar({ modeloIA: e.target.value })
+          }}
+          className="h-11 w-full rounded-xl border border-neutral-300 bg-transparent px-3 text-sm outline-none transition-colors focus:border-acento dark:border-neutral-700"
+        >
+          {MODELOS_CLAUDE.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.etiqueta} · {m.detalle}
+            </option>
+          ))}
+          <option value="personalizado">Personalizado…</option>
+        </select>
+        {!modeloClaudeConocido(ajustes.modeloIA) && (
+          <input
+            value={ajustes.modeloIA}
+            onChange={(e) => actualizar({ modeloIA: e.target.value.trim() })}
+            placeholder="claude-sonnet-4-5-20250929"
+            className="mt-2 h-11 w-full rounded-xl border border-neutral-300 bg-transparent px-3 text-sm outline-none transition-colors placeholder:text-neutral-400 focus:border-acento dark:border-neutral-700"
+          />
+        )}
         <Boton className="mt-3 w-full" icono={<KeyRound className="h-4 w-4" />} onClick={probarIA} cargando={probandoIA}>
           Probar conexión
         </Boton>

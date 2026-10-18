@@ -11,7 +11,9 @@ import {
   ESTRUCTURAS,
   GENEROS_MUSICALES,
   IDIOMAS,
+  MODELOS_CLAUDE,
   MOODS,
+  VOZ_CANTANTE,
   type Letra,
   type PestannaId,
 } from '@/types'
@@ -44,9 +46,20 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
   const [idioma, setIdioma] = useState<string>(IDIOMAS[0])
   const [mood, setMood] = useState<string>(MOODS[1])
   const [estructura, setEstructura] = useState<string>('estandar')
+  const [voz, setVoz] = useState<string>(VOZ_CANTANTE[0])
   const [letra, setLetra] = useState<Letra | null>(null)
   const [cargando, setCargando] = useState(false)
   const [guardada, setGuardada] = useState(false)
+
+  // 🤖 v0.7.0 — modelo de IA elegible desde acá (se persiste en
+  // Ajustes, así Crear y Ajustes siempre muestran lo mismo).
+  const [modeloIA, setModeloIA] = useState<string>(ajustes.modeloIA)
+  function elegirModeloIA(id: string) {
+    if (id === modeloIA) return
+    vibrar()
+    setModeloIA(id)
+    guardar('ajustes', { ...leerAjustes(), modeloIA: id })
+  }
 
   // Modo Escribir la mía (FASE 2)
   const [tituloPropio, setTituloPropio] = useState('')
@@ -54,6 +67,9 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
   const [idiomaPropio, setIdiomaPropio] = useState<string>(IDIOMAS[0])
   const [textoPropio, setTextoPropio] = useState('')
   const [modo, setModo] = useState<'ia' | 'propia'>('ia')
+
+  /** v0.7.0: etiqueta corta del modelo activo («Sonnet 4.5»). */
+  const modeloBonito = MODELOS_CLAUDE.find((m) => m.id === modeloIA)?.etiqueta ?? 'Claude'
 
   function interpretar(textoIA: string): Letra {
     const coincidencia = textoIA.match(/^TITULO\s*:\s*(.+)$/im)
@@ -76,6 +92,7 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
       estructura,
       texto: cuerpo,
       origen: 'ia',
+      voz: voz === 'Cualquiera' ? undefined : voz,
       fecha: Date.now(),
     }
   }
@@ -122,7 +139,7 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
       const est = ESTRUCTURAS.find((e) => e.id === estructura)
       const respuesta = await preguntarIA({
         token: ajustes.tokenIA,
-        modelo: ajustes.modeloIA,
+        modelo: modeloIA,
         sistema: SISTEMA_LETRISTA,
         maxTokens: 2000,
         mensajes: [
@@ -135,11 +152,17 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
               `Género musical: ${genero}`,
               `Idioma de la letra: ${idioma}`,
               `Emoción general: ${mood}`,
+              voz === 'Cualquiera' ? '' : `Voz del intérprete: ${voz.toLowerCase()} — escribí la letra pensando en esa voz`,
+              voz === 'Dúo'
+                ? 'Es un DUETO: alterná secciones entre voz masculina y femenina, etiquetándolas [Voz hombre] o [Voz mujer] al inicio de cada sección'
+                : '',
               `Estructura: ${est?.detalle ?? 'estructura estándar'}`,
               '',
               'Requisitos: rimas que suenen naturales al cantar, imágenes concretas (nada de',
               `clichés vagos), un coro pegadizo y repetible, y la métrica típica del género ${genero}.`,
-            ].join('\n'),
+            ]
+              .filter((l) => l !== '')
+              .join('\n'),
           },
         ],
       })
@@ -355,6 +378,34 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
             </div>
           </div>
 
+          {/* 🎤 Voz del intérprete (v0.7.0): Claude escribe la letra
+              pensando en esa voz, y viaja con ella hasta Suno. */}
+          <div>
+            <span className="mb-1.5 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">Voz del intérprete</span>
+            <div className="flex flex-wrap gap-2">
+              {VOZ_CANTANTE.map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setVoz(v)}
+                  aria-pressed={voz === v}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    voz === v
+                      ? 'border-acento bg-acento text-white'
+                      : 'border-neutral-300 bg-transparent text-neutral-500 hover:border-acento/60 dark:border-neutral-700 dark:text-neutral-400'
+                  }`}
+                >
+                  {v === 'Masculina' ? '👤 Voz masculina' : v === 'Femenina' ? '👤‍♀️ Voz femenina' : v === 'Dúo' ? '🎭 Dúo' : v}
+                </button>
+              ))}
+            </div>
+            {voz === 'Dúo' && (
+              <p className="mt-1 text-[10px] text-neutral-400">
+                El dueto se escribe con secciones [Voz hombre] / [Voz mujer] — Suno las respeta al cantar
+              </p>
+            )}
+          </div>
+
           <div>
             <span className="mb-1.5 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">Estructura</span>
             <div className="grid grid-cols-3 gap-2">
@@ -376,6 +427,42 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
             </div>
           </div>
 
+          {/* 🤖 Modelo de IA (v0.7.0): Haiku para probar rápido,
+              Sonnet para el día a día, Opus cuando querés lo máximo. */}
+          <div>
+            <span className="mb-1.5 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">Modelo de IA</span>
+            <div className="grid grid-cols-3 gap-2">
+              {MODELOS_CLAUDE.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => elegirModeloIA(m.id)}
+                  aria-pressed={modeloIA === m.id}
+                  title={m.detalle}
+                  className={`rounded-xl border px-2 py-2 text-center transition-colors ${
+                    modeloIA === m.id
+                      ? 'border-acento bg-acento/10 text-acento'
+                      : 'border-neutral-300 bg-transparent text-neutral-500 hover:border-acento/60 dark:border-neutral-700 dark:text-neutral-400'
+                  }`}
+                >
+                  <span className="block text-xs font-bold">{m.etiqueta}</span>
+                  <span className="mt-0.5 block text-[10px] leading-tight">
+                    {m.id.includes('haiku') ? '⚡ rápido y barato' : m.id.includes('opus') ? '👑 máxima calidad' : '⭐ recomendado'}
+                  </span>
+                </button>
+              ))}
+            </div>
+            {MODELOS_CLAUDE.find((m) => m.id === modeloIA) ? (
+              <p className="mt-1 text-[10px] text-neutral-400">
+                {MODELOS_CLAUDE.find((m) => m.id === modeloIA)?.detalle} — también lo cambiás en Ajustes
+              </p>
+            ) : (
+              <p className="mt-1 text-[10px] text-neutral-400">
+                Modelo personalizado ({modeloIA}) — elegí uno de arriba o cambialo en Ajustes
+              </p>
+            )}
+          </div>
+
           <Boton className="w-full" icono={<Wand2 className="h-4 w-4" />} onClick={generar} cargando={cargando}>
             {cargando ? 'Componiendo…' : 'Generar letra'}
           </Boton>
@@ -391,7 +478,7 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
             <span className="h-2 w-2 animate-bounce rounded-full bg-acento" style={{ animationDelay: '240ms' }} />
           </span>
           <p className="mt-3 text-center text-sm text-neutral-400">
-            {genero} · {mood.toLowerCase()} — buscando las palabras…
+            {genero} · {mood.toLowerCase()} — {modeloBonito} está buscando las palabras…
           </p>
         </section>
       )}
@@ -408,6 +495,11 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
             <span className="rounded-full bg-neutral-200 px-2 py-0.5 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
               {letra.mood}
             </span>
+            {letra.voz && (
+              <span className="rounded-full bg-neutral-200 px-2 py-0.5 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
+                🎤 voz {letra.voz.toLowerCase()}
+              </span>
+            )}
           </div>
           <CuerpoLetra texto={letra.texto} />
           <div className="mt-4 grid grid-cols-2 gap-2">
