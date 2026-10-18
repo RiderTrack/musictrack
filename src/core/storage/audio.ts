@@ -1,8 +1,9 @@
 // ═══════════════════════════════════════════════════════════
-// 💿 AUDIO LOCAL — IndexedDB para los MP3 que genera Lyria.
-// A diferencia de Suno (que devuelve URLs CDN), Lyria entrega
-// el audio embebido en base64: guardarlo en localStorage
-// reventaría la cuota (~5MB). IndexedDB traga megas sin pestañear.
+// 💿 AUDIO LOCAL — IndexedDB para los MP3 de la app.
+// Lyria entrega el audio embebido en base64; los de Suno viven
+// en una URL del CDN que puede caducar — v0.10.0 los RESPALDA
+// acá también (respaldo.ts los copia al quedar listos).
+// localStorage no da abasto (~5MB); IndexedDB traga megas.
 // ═══════════════════════════════════════════════════════════
 
 const NOMBRE_DB = 'musictrack_audio'
@@ -43,6 +44,22 @@ function operar<T>(modo: IDBTransactionMode, fn: (tienda: IDBObjectStore) => IDB
 /** Guarda el MP3 (base64 sin prefijo) bajo el id de la canción. */
 export async function guardarAudio(id: string, base64: string, mime = 'audio/mp3'): Promise<void> {
   await operar('readwrite', (tienda) => tienda.put({ mime, base64, fecha: Date.now() } satisfies PistaAudio, id))
+}
+
+/** v0.10.0 — guarda un BLOB (el MP3 de Suno bajado del CDN para
+ * el respaldo local) en el mismo formato que usa Lyria, así el
+ * reproductor lo lee igual sin saber de dónde vino. */
+export async function guardarAudioBlob(id: string, blob: Blob): Promise<void> {
+  const base64 = await new Promise<string>((resolver, rechazar) => {
+    const fr = new FileReader()
+    fr.onload = () => {
+      const r = String(fr.result)
+      resolver(r.slice(r.indexOf(',') + 1))
+    }
+    fr.onerror = () => rechazar(fr.error ?? new Error('no pude leer el blob'))
+    fr.readAsDataURL(blob)
+  })
+  await guardarAudio(id, base64, blob.type || 'audio/mp3')
 }
 
 /** Devuelve la pista como dataURL lista para <audio src>, o null si no existe. */

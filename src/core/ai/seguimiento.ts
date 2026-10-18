@@ -1,5 +1,6 @@
 import { leer, guardar, leerAjustes } from '@/core/storage/almacenamiento'
 import { CLAVE_CANCIONES, EVENTO_CANCIONES } from '@/core/storage/canciones'
+import { respaldarCancion } from '@/core/storage/respaldo'
 import { consultarPistas, type MotorSuno, type PistaSuno } from '@/core/ai/suno'
 import { notificar, cancelarRecordatorio } from '@/core/notificaciones/notificaciones'
 import type { Cancion } from '@/types'
@@ -126,6 +127,10 @@ async function tick(): Promise<void> {
           '🎵 ¡Tu canción está lista!',
           `«${n.titulo}»${n.version ? ` — versión ${n.version}` : ''} ya podés escucharla en tu Biblioteca 📚`,
         )
+        // 💾 v0.10.0 — RESPALDO AUTOMÁTICO: apenas queda lista, el
+        // MP3 se copia del CDN de Suno al dispositivo (IndexedDB).
+        // Así, aunque el enlace caduque, la canción no se pierde.
+        void respaldarCancion(n)
       }
       for (const n of grupoDespues.filter(
         (n) => n.estado === 'error' && !grupoAntes.some((a) => a.id === n.id && a.estado === 'error'),

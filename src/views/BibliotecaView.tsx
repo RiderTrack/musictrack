@@ -3,10 +3,16 @@ import {
   Disc3,
   Download,
   FastForward,
+  HardDriveDownload,
+  Heart,
   Link2,
+  ListMusic,
+  ListPlus,
   Loader2,
   Music2,
+  Pause,
   PenLine,
+  Play,
   RefreshCw,
   Rocket,
   Search,
@@ -17,6 +23,9 @@ import {
 import { leerAjustes, leer } from '@/core/storage/almacenamiento'
 import { leerAudio, borrarAudio } from '@/core/storage/audio'
 import { agregarCanciones, actualizarCancion, borrarCancion, EVENTO_CANCIONES, guardarCanciones, leerCanciones } from '@/core/storage/canciones'
+import { alternarEnLista, borrarLista, crearLista, EVENTO_LISTAS, leerListas, type ListaReproduccion } from '@/core/storage/listas'
+import { necesitaRespaldo, respaldarCancion, respaldarPendientes } from '@/core/storage/respaldo'
+import { useReproductor } from '@/core/audio/reproductor'
 import { guardarMp3EnDescargas, guardarTextoEnDescargas, nombreMp3, nombreLrc, type ResultadoDescarga } from '@/core/natives/descargas'
 import {
   consultarLetraConTiempos,
@@ -179,29 +188,9 @@ function colaDeLetra(texto: string): string {
   return bloques.slice(-cuantas).join('\n\n')
 }
 
-/** Reproductor que resuelve el audio venga de CDN (Suno) o IndexedDB (Lyria). */
-function Reproductor({ cancion }: { cancion: Cancion }) {
-  const [src, setSrc] = useState<string | null>(cancion.urlAudio ?? null)
-  useEffect(() => {
-    let vivo = true
-    if (!src && cancion.audioLocal) {
-      leerAudio(cancion.id).then((url) => {
-        if (vivo) setSrc(url)
-      })
-    }
-    return () => {
-      vivo = false
-    }
-  }, [cancion.id, cancion.audioLocal, src])
-  if (!src) {
-    return (
-      <p className="mt-2.5 flex items-center gap-1.5 text-xs text-neutral-400">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" /> cargando el audio…
-      </p>
-    )
-  }
-  return <audio controls preload="none" src={src} className="mt-2.5 h-10 w-full" />
-}
+/** 🎧 v0.10.0 — el audio ya NO vive en cada tarjeta: el
+ * reproductor ÚNICO global (mini-barra fija abajo + pantalla de
+ * bloqueo) lo resuelve todo — CDN de Suno o copia local 💾. */
 
 const claseInput =
   'h-11 w-full rounded-xl border border-neutral-300 bg-transparent px-3 text-sm outline-none transition-colors focus:border-acento dark:border-neutral-700'
@@ -217,6 +206,18 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
   // la canción esté terminada puede editar el título»): al
   // confirmar, actualizarCancion avisa a toda la app sola.
   const [renombrando, setRenombrando] = useState<{ id: string; valor: string } | null>(null)
+
+  // 🎧 v0.10.0 — el reproductor ÚNICO global (mini-barra abajo)
+  const reproductor = useReproductor()
+
+  // ❤️🚫 v0.10.0 — favoritas y listas del usuario («Anime», «Gym»…)
+  const [listas, setListas] = useState<ListaReproduccion[]>(() => leerListas())
+  const [modalListas, setModalListas] = useState<Cancion | null>(null)
+  const [nuevaLista, setNuevaLista] = useState('')
+  const [creandoLista, setCreandoLista] = useState<string | null>(null)
+
+  // 💾 v0.10.0 — respaldo local de los MP3 de Suno
+  const [respaldando, setRespaldando] = useState(false)
 
   // 🔎 filtro por título o estilo
   const q = busqueda.trim().toLowerCase()
@@ -237,6 +238,16 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
       (a, b) => Math.max(...b[1].map((x) => x.fecha)) - Math.max(...a[1].map((x) => x.fecha)),
     )
   })()
+
+  // ❤️ v0.10.0 — FAVORITAS: el corazón de cada tarjeta las junta acá
+  const favoritasVisibles = visibles.filter((c) => c.estado === 'lista' && c.favorita)
+
+  // 🎵 v0.10.0 — las canciones de una lista (vivas y que matcheen
+  // el buscador si hay una búsqueda activa)
+  function cancionesDeLista(l: ListaReproduccion): Cancion[] {
+    const porId = new Map(visibles.map((c) => [c.id, c]))
+    return l.ids.map((id) => porId.get(id)).filter((c): c is Cancion => !!c)
+  }
 
   // ⏱️ Reloj independiente (v0.4.5): re-render cada 10 s para que los
   // minutos y el semáforo de conexión sigan vivos aunque el polling
@@ -276,6 +287,36 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // 🎵 las listas también avisan cuando cambian
+  useEffect(() => {
+    function alCambiarListas() {
+      setListas(leerListas())
+    }
+    window.addEventListener(EVENTO_LISTAS, alCambiarListas)
+    return () => window.removeEventListener(EVENTO_LISTAS, alCambiarListas)
+  }, [])
+
+  // 💾 v0.10.0 — RESPALDO AUTOMÁTICO al entrar a la Biblioteca:
+  // las canciones que todavía no tienen copia local se bajan del
+  // CDN una por una, en silencio. Si no hay nada pendiente, no
+  // hace nada (y el botón 💾 de arriba deja reintentarlo a mano).
+  const autoRespaldoHecho = useRef(false)
+  useEffect(() => {
+    if (autoRespaldoHecho.current) return
+    autoRespaldoHecho.current = true
+    void (async () => {
+      const r = await respaldarPendientes()
+      if (r.ok > 0) {
+        mostrar(
+          `💾 Respaldo local: ${r.ok} ${r.ok === 1 ? 'canción copiada' : 'canciones copiadas'} a tu dispositivo — ya no dependen del enlace de Suno`,
+          'ok',
+          6000,
+        )
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   async function actualizarCreditos() {
     if (!ajustes.tokenSuno) return
     try {
@@ -303,7 +344,10 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
       setUltimoContacto(Date.now())
       // guarda + dispara el evento → la propia vista se refresca y
       // los toasts de «¡lista!» salen del listener (una sola vez)
-      guardarCanciones(aplicarGrupo(leerCanciones(), c.taskId, pistas))
+      const despues = aplicarGrupo(leerCanciones(), c.taskId, pistas)
+      guardarCanciones(despues)
+      // 💾 v0.10.0 — apenas quedan listas, copia del CDN al dispositivo
+      despues.filter((x) => x.taskId === c.taskId).forEach((x) => void respaldarCancion(x))
       if (pistas.some((p) => p.estado === 'lista') || pistas.some((p) => p.estado === 'error')) {
         vibrar()
         void actualizarCreditos()
@@ -329,7 +373,7 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
   function borrar(id: string) {
     vibrar('media')
     const cancion = canciones.find((c) => c.id === id)
-    if (cancion?.audioLocal) void borrarAudio(id)
+    if (cancion?.audioLocal || cancion?.respaldada) void borrarAudio(id)
     borrarCancion(id)
     mostrar('Canción eliminada de la biblioteca', 'info')
   }
@@ -458,11 +502,13 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
     setBajandoId(c.id)
     try {
       let blob: Blob | null = null
-      if (c.audioLocal) {
+      // v0.10.0 — primero la copia LOCAL (respaldada 💾 o Lyria):
+      // más rápida y funciona aunque el CDN ya haya caducado
+      if (c.audioLocal || c.respaldada) {
         const dataUrl = await leerAudio(c.id)
-        if (!dataUrl) throw new Error('sin audio local')
-        blob = await (await fetch(dataUrl)).blob()
-      } else if (c.urlAudio) {
+        if (dataUrl) blob = await (await fetch(dataUrl)).blob()
+      }
+      if (!blob && c.urlAudio) {
         const resp = await fetch(c.urlAudio)
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
         blob = await resp.blob()
@@ -684,6 +730,66 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
   const sunoMudo = generando > 0 && ultimoContacto !== null && (segundosSinRespuesta ?? 0) > 45
   const hayListas = canciones.some((c) => c.estado === 'lista')
 
+  /** 🎧 v0.10.0 — tocar ▶ en una tarjeta: si ya es la que suena,
+   * pausa/reanuda; si no, arma la cola con su sección (carpeta,
+   * favoritas, lista) y arranca ahí. */
+  function alternarReproduccion(c: Cancion, seccion: Cancion[]) {
+    vibrar('ligera')
+    if (reproductor.actual?.id === c.id) {
+      reproductor.alternar()
+      return
+    }
+    reproductor.reproducir(seccion, c.id)
+  }
+
+  /** ❤️ v0.10.0 — marcar / desmarcar favorita. */
+  function alternarFavorita(c: Cancion) {
+    actualizarCancion(c.id, { favorita: !c.favorita })
+  }
+
+  /** 💾 v0.10.0 — respaldo manual (el automático corre al entrar). */
+  async function respaldarTodo() {
+    if (respaldando) return
+    const pendientes = canciones.filter(necesitaRespaldo).length
+    if (!pendientes) {
+      mostrar('Todas tus canciones ya tienen su copia local 💾', 'ok')
+      return
+    }
+    setRespaldando(true)
+    try {
+      const r = await respaldarPendientes()
+      vibrar()
+      if (r.ok > 0) {
+        mostrar(`💾 ${r.ok} ${r.ok === 1 ? 'canción copiada' : 'canciones copiadas'} a tu dispositivo`, 'ok', 5000)
+      } else {
+        mostrar('No pude bajar ninguna — revisá tu conexión y probá de nuevo', 'error', 5000)
+      }
+    } finally {
+      setRespaldando(false)
+    }
+  }
+
+  /** 🎵 v0.10.0 — crea una lista desde la sección de listas. */
+  function confirmarListaNueva() {
+    const nombre = (creandoLista ?? '').trim()
+    setCreandoLista(null)
+    if (!nombre) return
+    crearLista(nombre)
+    vibrar()
+    mostrar(`Lista «${nombre}» creada ✓ — agregale canciones con el ➕ de cada tarjeta`, 'ok', 5000)
+  }
+
+  /** 🎵 v0.10.0 — crea una lista y mete la canción del modal adentro. */
+  function crearListaYAgregar() {
+    if (!modalListas || !nuevaLista.trim()) return
+    const lista = crearLista(nuevaLista.trim())
+    alternarEnLista(lista.id, modalListas.id)
+    vibrar()
+    mostrar(`«${modalListas.titulo}» entró a «${lista.nombre}» ✓`, 'ok')
+    setNuevaLista('')
+    setModalListas(null)
+  }
+
   // ✏️ v0.9.1 — confirma el renombre de la tarjeta en edición.
   function confirmarRenombre() {
     if (!renombrando) return
@@ -700,7 +806,7 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
   /** v0.9.1 — la TARJETA de una canción (antes era el map directo
    * de la lista): ahora se dibuja en «En curso» y adentro de cada
    * CARPETA de estilo. Novedad: el título se puede EDITAR (✏️). */
-  function renderTarjeta(c: Cancion) {
+  function renderTarjeta(c: Cancion, seccion: Cancion[]) {
     // v0.6.4: tarea «generando» con edad de muerta → la tarjeta
     // cambia de cara (ámbar, sin spinner) y deja de prometer.
     const muerta = c.estado === 'generando' && c.motor !== 'lyria' && edadMin(c.fecha) >= MIN_TAREA_MUERTA
@@ -800,6 +906,7 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
                     <p className="mt-0.5 truncate text-xs text-neutral-500 dark:text-neutral-400">
                       {[
                         c.motor === 'lyria' ? '🎹 Lyria' : c.continuacionDe ? '⏩ continuación' : '🎵 Suno',
+                        c.audioLocal || c.respaldada ? '💾 en tu dispositivo' : '',
                         c.estilo,
                         c.duracionSeg ? formatoDuracion(c.duracionSeg) : '',
                         c.instrumental ? 'instrumental' : '',
@@ -877,7 +984,59 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
                     {c.estado === 'error' && (
                       <p className="mt-2 text-xs text-red-500">{c.error ?? 'La generación falló — probá de nuevo'}</p>
                     )}
-                    {c.estado === 'lista' && <Reproductor cancion={c} />}
+                    {c.estado === 'lista' && (
+                      <div className="mt-2.5 flex items-center gap-2">
+                        {/* ❤️ favorita */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            vibrar('ligera')
+                            alternarFavorita(c)
+                          }}
+                          title={c.favorita ? 'Quitar de favoritas' : 'Marcar como favorita'}
+                          aria-label={c.favorita ? 'Quitar de favoritas' : 'Marcar como favorita'}
+                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-colors ${
+                            c.favorita
+                              ? 'border-red-500/40 bg-red-500/10 text-red-500'
+                              : 'border-neutral-200 text-neutral-400 hover:border-red-500/40 hover:text-red-500 dark:border-neutral-800'
+                          }`}
+                        >
+                          <Heart className={`h-4 w-4 ${c.favorita ? 'fill-current' : ''}`} />
+                        </button>
+                        {/* ▶ reproducir (o ⏸ si es la que suena) */}
+                        {(() => {
+                          const esActual = reproductor.actual?.id === c.id
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => alternarReproduccion(c, seccion)}
+                              className={`flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl text-xs font-bold transition-colors ${
+                                esActual
+                                  ? 'bg-acento text-black hover:brightness-110'
+                                  : 'bg-acento/10 text-acento hover:bg-acento/20'
+                              }`}
+                            >
+                              {esActual && reproductor.sonando ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                              {esActual ? (reproductor.sonando ? 'Pausar' : 'Seguir sonando') : 'Reproducir'}
+                            </button>
+                          )
+                        })()}
+                        {/* ➕ a una lista */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            vibrar('ligera')
+                            setModalListas(c)
+                            setNuevaLista('')
+                          }}
+                          title="Agregar a una lista (Anime, Gym…)"
+                          aria-label="Agregar a una lista"
+                          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-neutral-200 text-neutral-400 transition-colors hover:border-acento/40 hover:text-acento dark:border-neutral-800"
+                        >
+                          <ListPlus className="h-4 w-4" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -962,13 +1121,25 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
             {generando > 0 && <span className="ml-2 text-acento">· {generando} en el horno</span>}
           </h3>
           {canciones.length > 0 && (
-            <button
-              type="button"
-              onClick={() => window.location.reload()}
-              className="flex items-center gap-1 text-xs font-semibold text-neutral-400 hover:text-acento"
-            >
-              <RefreshCw className="h-3.5 w-3.5" /> Refrescar
-            </button>
+            <div className="flex shrink-0 items-center gap-3">
+              <button
+                type="button"
+                onClick={() => void respaldarTodo()}
+                disabled={respaldando}
+                title="Copiar los MP3 de Suno a tu dispositivo (respaldo local)"
+                className="flex items-center gap-1 text-xs font-semibold text-neutral-400 transition-colors hover:text-acento disabled:opacity-50"
+              >
+                <HardDriveDownload className={`h-3.5 w-3.5 ${respaldando ? 'animate-pulse' : ''}`} />
+                {respaldando ? 'respaldando…' : canciones.some(necesitaRespaldo) ? '💾 Respaldo' : '💾 a salvo'}
+              </button>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="flex items-center gap-1 text-xs font-semibold text-neutral-400 hover:text-acento"
+              >
+                <RefreshCw className="h-3.5 w-3.5" /> Refrescar
+              </button>
+            </div>
           )}
         </div>
 
@@ -991,6 +1162,16 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
             💾 Al tocar <b>MP3</b>, la canción baja con la <b>letra adentro</b> y un archivito <b>.lrc</b> al lado (mismo
             nombre) — los reproductores como Musicolet o Poweramp los leen solos y te muestran la letra avanzando con la
             música, como en Spotify 🎼
+          </p>
+        )}
+
+        {/* 💾 v0.10.0 — mientras queden canciones sin copia local, se
+            enseña el respaldo (desaparece cuando todo está a salvo) */}
+        {canciones.some(necesitaRespaldo) && (
+          <p className="mb-2 rounded-xl bg-emerald-500/10 px-3 py-2 text-[11px] leading-relaxed text-emerald-700 dark:text-emerald-400">
+            📼 Cada canción de Suno se copia <b>sola a tu dispositivo</b> al quedar lista (y las viejas, al entrar acá) —
+            así, aunque el enlace del CDN caduque con el tiempo, tus canciones no se pierden: suenan y se bajan desde la
+            copia local 💾
           </p>
         )}
 
@@ -1028,9 +1209,155 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
               <p className="text-[11px] font-bold uppercase tracking-wider text-neutral-400">
                 ⏳ En curso · {enCurso.length}
               </p>
-              <ul className="space-y-2.5">{enCurso.map((c) => renderTarjeta(c))}</ul>
+              <ul className="space-y-2.5">{enCurso.map((c) => renderTarjeta(c, enCurso))}</ul>
             </div>
           )}
+
+          {/* ❤️ v0.10.0 — FAVORITAS: el corazón de cada tarjeta las
+              junta acá, a un toque (como una carpeta más). */}
+          {favoritasVisibles.length > 0 && (
+            <details className="group rounded-2xl border border-red-500/20 bg-red-500/5">
+              <summary className="flex cursor-pointer select-none list-none items-center gap-2 px-3 py-2.5 [&::-webkit-details-marker]:hidden">
+                <span className="truncate text-sm font-bold text-neutral-700 dark:text-neutral-200">❤️ Favoritas</span>
+                <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      reproductor.reproducir(favoritasVisibles, favoritasVisibles[0].id)
+                    }}
+                    title="Reproducir las favoritas"
+                    className="rounded-lg p-1 text-acento transition-colors hover:bg-acento/10"
+                  >
+                    <Play className="h-3.5 w-3.5" />
+                  </button>
+                  <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold text-red-500">
+                    {favoritasVisibles.length} {favoritasVisibles.length === 1 ? 'canción' : 'canciones'}
+                  </span>
+                  <span className="text-neutral-400 transition-transform group-open:rotate-90">▸</span>
+                </span>
+              </summary>
+              <ul className="space-y-2.5 border-t border-red-500/10 px-3 py-2.5">
+                {favoritasVisibles.map((c) => renderTarjeta(c, favoritasVisibles))}
+              </ul>
+            </details>
+          )}
+
+          {/* 🎵 v0.10.0 — LISTAS propias: «Anime», «Gym», «Para
+              dormir»… se arman con el ➕ de cada canción. */}
+          <details className="group rounded-2xl border border-neutral-200 bg-neutral-50/60 dark:border-neutral-800 dark:bg-neutral-900/40">
+            <summary className="flex cursor-pointer select-none list-none items-center gap-2 px-3 py-2.5 [&::-webkit-details-marker]:hidden">
+              <span className="truncate text-sm font-bold text-neutral-700 dark:text-neutral-200">🎵 Mis listas</span>
+              <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                <span className="rounded-full bg-acento/15 px-2 py-0.5 text-[10px] font-bold text-acento">
+                  {listas.length} {listas.length === 1 ? 'lista' : 'listas'}
+                </span>
+                <span className="text-neutral-400 transition-transform group-open:rotate-90">▸</span>
+              </span>
+            </summary>
+            <div className="space-y-2.5 border-t border-neutral-200/70 px-3 py-2.5 dark:border-neutral-800/70">
+              {listas.length === 0 && (
+                <p className="text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
+                  Todavía no tenés listas — tocá el <b>➕</b> de cualquier canción para meterla en una («Anime», «Gym»,
+                  «Para dormir»…) o creá la primera acá 👇
+                </p>
+              )}
+              {listas.map((l) => {
+                const cs = cancionesDeLista(l)
+                return (
+                  <details key={l.id} className="rounded-xl bg-white dark:bg-neutral-900">
+                    <summary className="flex cursor-pointer select-none list-none items-center gap-2 px-2.5 py-2 [&::-webkit-details-marker]:hidden">
+                      <ListMusic className="h-4 w-4 shrink-0 text-acento" />
+                      <span className="min-w-0 flex-1 truncate text-sm font-bold text-neutral-800 dark:text-neutral-100">
+                        {l.nombre}
+                      </span>
+                      <span className="flex shrink-0 items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            if (cs.length) reproductor.reproducir(cs, cs[0].id)
+                          }}
+                          title={`Reproducir «${l.nombre}»`}
+                          className="rounded-lg p-1 text-acento transition-colors hover:bg-acento/10"
+                        >
+                          <Play className="h-3.5 w-3.5" />
+                        </button>
+                        <span className="rounded-full bg-acento/15 px-2 py-0.5 text-[10px] font-bold text-acento">
+                          {cs.length}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            borrarLista(l.id)
+                            vibrar('media')
+                            mostrar(`Lista «${l.nombre}» eliminada — las canciones siguen en tu Biblioteca`, 'info')
+                          }}
+                          title="Borrar la lista (no borra las canciones)"
+                          className="rounded-lg p-1 text-neutral-400 transition-colors hover:text-red-500"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                        <span className="text-neutral-400 transition-transform group-open:rotate-90">▸</span>
+                      </span>
+                    </summary>
+                    {cs.length ? (
+                      <ul className="space-y-2.5 px-2 pb-2 pt-1">{cs.map((c) => renderTarjeta(c, cs))}</ul>
+                    ) : (
+                      <p className="px-2.5 pb-2 pt-1 text-xs text-neutral-400">
+                        Vacía — tocá el ➕ de cualquier canción para agregarla
+                      </p>
+                    )}
+                  </details>
+                )
+              })}
+              {creandoLista === null ? (
+                <button
+                  type="button"
+                  onClick={() => setCreandoLista('')}
+                  className="text-xs font-bold text-acento transition-colors hover:brightness-110"
+                >
+                  ＋ Nueva lista
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <input
+                    autoFocus
+                    value={creandoLista}
+                    onChange={(e) => setCreandoLista(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') confirmarListaNueva()
+                      if (e.key === 'Escape') setCreandoLista(null)
+                    }}
+                    maxLength={40}
+                    placeholder="Anime, Gym, Para dormir…"
+                    aria-label="Nombre de la nueva lista"
+                    className="h-9 min-w-0 flex-1 rounded-xl border border-acento bg-transparent px-3 text-sm text-neutral-900 outline-none dark:text-white"
+                  />
+                  <button
+                    type="button"
+                    onClick={confirmarListaNueva}
+                    title="Crear la lista"
+                    className="shrink-0 rounded-lg bg-emerald-500/15 px-2.5 py-1 font-bold text-emerald-600 transition-colors hover:bg-emerald-500/25 dark:text-emerald-400"
+                  >
+                    ✓
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCreandoLista(null)}
+                    title="Cancelar"
+                    className="shrink-0 rounded-lg px-2 py-1 font-bold text-neutral-400 transition-colors hover:text-neutral-700 dark:hover:text-neutral-200"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+            </div>
+          </details>
 
           {/* 📁 v0.9.1 — CARPETAS POR ESTILO (pedido del usuario):
               «todo lo que es power metal en una carpetita… y de ahí
@@ -1055,6 +1382,18 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
                       📁 {carpetaBonita(nombre)}
                     </span>
                     <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          reproductor.reproducir(cs, cs[0].id)
+                        }}
+                        title={`Reproducir la carpeta ${carpetaBonita(nombre)}`}
+                        className="rounded-lg p-1 text-acento transition-colors hover:bg-acento/10"
+                      >
+                        <Play className="h-3.5 w-3.5" />
+                      </button>
                       <span className="rounded-full bg-acento/15 px-2 py-0.5 text-[10px] font-bold text-acento">
                         {cs.length} {cs.length === 1 ? 'canción' : 'canciones'}
                       </span>
@@ -1062,7 +1401,7 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
                     </span>
                   </summary>
                   <ul className="space-y-2.5 border-t border-neutral-200/70 px-3 py-2.5 dark:border-neutral-800/70">
-                    {cs.map((c) => renderTarjeta(c))}
+                    {cs.map((c) => renderTarjeta(c, cs))}
                   </ul>
                 </details>
               ))}
@@ -1161,6 +1500,65 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
               Consume créditos como una generación · el modelo es el mismo de la original (
               {modeloSunoBonito(extModal.modelo)})
             </p>
+          </div>
+        )}
+      </Modal>
+
+      {/* 🎵 v0.10.0 — MODAL AGREGAR A LISTA: tocás el ➕ de una
+          canción y elegís la lista (o la creás al toque). */}
+      <Modal
+        abierto={!!modalListas}
+        onCerrar={() => setModalListas(null)}
+        titulo={`➕ «${modalListas?.titulo ?? ''}» → lista`}
+      >
+        {modalListas && (
+          <div className="space-y-2.5">
+            {listas.length === 0 && (
+              <p className="text-sm leading-relaxed text-neutral-500 dark:text-neutral-400">
+                Todavía no tenés listas — creá la primera y la canción entra solita:
+              </p>
+            )}
+            {listas.map((l) => {
+              const dentro = l.ids.includes(modalListas.id)
+              return (
+                <button
+                  key={l.id}
+                  type="button"
+                  onClick={() => {
+                    vibrar('ligera')
+                    const quedo = alternarEnLista(l.id, modalListas.id)
+                    mostrar(quedo ? `Entró a «${l.nombre}» ✓` : `Salió de «${l.nombre}»`, 'info')
+                  }}
+                  className={`flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition-colors ${
+                    dentro
+                      ? 'border-acento/50 bg-acento/10 text-acento'
+                      : 'border-neutral-200 text-neutral-800 hover:border-acento/40 dark:border-neutral-800 dark:text-neutral-100'
+                  }`}
+                >
+                  <span className="min-w-0 truncate">
+                    {dentro ? '✓ ' : ''}
+                    {l.nombre}
+                  </span>
+                  <span className="shrink-0 text-[10px] font-bold text-neutral-400">{l.ids.length}</span>
+                </button>
+              )
+            })}
+            <div className="flex gap-2 pt-1">
+              <input
+                value={nuevaLista}
+                onChange={(e) => setNuevaLista(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') crearListaYAgregar()
+                }}
+                maxLength={40}
+                placeholder="Nueva lista (Anime, Gym…)"
+                aria-label="Nombre de la nueva lista"
+                className={claseInput}
+              />
+              <Boton onClick={crearListaYAgregar} disabled={!nuevaLista.trim()}>
+                Crear
+              </Boton>
+            </div>
           </div>
         )}
       </Modal>

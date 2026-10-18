@@ -792,6 +792,13 @@ export interface Cancion {
   /** v0.8.0 — segundo donde arranca esta continuación dentro de la
    * original (parámetro continueAt que se mandó a Suno). */
   continueAtSeg?: number
+  /** v0.10.0 — ❤️ favorita del usuario (corazón en la Biblioteca). */
+  favorita?: boolean
+  /** v0.10.0 — 💾 el MP3 de Suno ya vive en el dispositivo
+   * (IndexedDB, copiado del CDN al quedar lista): aunque el
+   * enlace de Suno caduque, la canción sigue sonando y se puede
+   * bajar. Las de Lyria no lo necesitan (audioLocal). */
+  respaldada?: boolean
   estado: 'generando' | 'lista' | 'error'
   /** Estado tal cual lo reporta sunoapi.org (PENDING, TEXT_SUCCESS,
    * FIRST_SUCCESS…) — alimenta la barrita de etapas de la v0.4.5. */
