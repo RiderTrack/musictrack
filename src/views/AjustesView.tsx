@@ -238,6 +238,12 @@ export function AjustesView() {
           dispositivo. (La cuenta gratis de <span className="font-semibold">suno.com</span> es aparte, para la app oficial; esta
           clave es de la API.)
         </p>
+        <p className="mb-3 rounded-xl bg-neutral-100 p-2.5 text-[11px] leading-relaxed text-neutral-500 dark:bg-neutral-800/60 dark:text-neutral-400">
+          ⚡ <span className="font-semibold">Las dos colas:</span> Suno no vende API oficial, así que esta clave pasa por un
+          intermediario con cola compartida (en horas pico se demora mucho). La <span className="font-semibold">cola oficial</span> —la
+          de las apps rápidas— vive en suno.com o su app oficial (Suno, Inc.): gratis con tu Google (50 créditos/día) o Pro
+          ($8/mes, cola prioritaria). Desde la pestaña Música tenés el botón «⚡ Urgente» para saltar ahí cuando quieras.
+        </p>
         <label className="mb-1 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">URL base de la API</label>
         <input
           value={ajustes.urlSuno}

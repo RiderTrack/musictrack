@@ -403,6 +403,24 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
     if (!ok) mostrar('Compartir no disponible en esta plataforma', 'info')
   }
 
+  /** ⚡ (v0.6.3) La cola oficial de Suno no se vende como API:
+   * vive en suno.com o su app oficial (Suno, Inc.) — gratis con tu
+   * Google (50 créditos/día) o Pro ($8/mes, prioritaria). Este atajo
+   * copia la letra del formulario y abre Custom Mode. */
+  async function urgenteSunoCom() {
+    const letraTxt = texto.trim()
+    vibrar()
+    const copiado = letraTxt.length >= 20 ? await copiarTexto(letraTxt) : false
+    await abrirURL('https://suno.com/create')
+    mostrar(
+      copiado
+        ? `Letra copiada ✔ — en Suno usá Custom Mode con el estilo: ${estilo.trim() || 'el que quieras'}`
+        : 'Abrí Custom Mode en Suno y pegá tu letra',
+      'info',
+      6500,
+    )
+  }
+
   /** 🚀 Válvula de escape (v0.6.1): si la cola de sunoapi.org está
    * muerta, la misma letra se puede musicalizar YA en suno.com con
    * la cuenta Google (50 créditos/día, cola oficial — la misma que
@@ -685,6 +703,19 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                 Créditos en sunoapi.org:
                 <span className="font-bold text-neutral-600 dark:text-neutral-300">{creditos}</span>
               </p>
+            )}
+            {/* ⚡ Atajo a la cola oficial (v0.6.3): sin esperar a que una
+                tarjeta se quede trabada — copia la letra y abre suno.com. */}
+            {motor === 'suno' && (
+              <Boton
+                variante="fantasma"
+                tamano="sm"
+                className="w-full"
+                icono={<Rocket className="h-3.5 w-3.5" />}
+                onClick={() => void urgenteSunoCom()}
+              >
+                ⚡ Urgente: hacerla por suno.com — cola oficial
+              </Boton>
             )}
           </div>
         )}
