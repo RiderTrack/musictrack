@@ -13,13 +13,14 @@ import {
   Shuffle,
   SkipBack,
   SkipForward,
+  X,
 } from 'lucide-react'
 import { useReproductor } from '@/core/audio/reproductor'
 import { estimarLineasConTiempo, lineasConTiempo, type LineaLrc } from '@/core/audio/mp3'
 import { pedirLetraSincronizada, type MotorSuno } from '@/core/ai/suno'
 import { actualizarCancion } from '@/core/storage/canciones'
 import { alternarEnLista, crearLista, EVENTO_LISTAS, leerListas, type ListaReproduccion } from '@/core/storage/listas'
-import { leer, leerAjustes } from '@/core/storage/almacenamiento'
+import { leer, leerAjustes, guardar } from '@/core/storage/almacenamiento'
 import { vibrar } from '@/core/natives/plataforma'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
@@ -37,6 +38,11 @@ import type { Cancion, Letra } from '@/types'
 //     tocá cualquier línea para saltar a ese momento
 //   • COLA de lo que sigue, con salto directo a cualquier tema
 //     (la barra «Sonando de» recuerda de qué lista salió)
+// v0.11.1 — QUE SE PUEDA CERRAR, de 5 maneras:
+//   ① botón ATRÁS de Android o del navegador (capa de historial)
+//   ② ✕ arriba a la derecha  ③ chevron ⬇ arriba a la izquierda
+//   ④ deslizar la portada hacia abajo (con la mano, tipo Spotify)
+//   ⑤ tecla Esc — y la música SIGUE sonando en la mini-barra
 // ═══════════════════════════════════════════════════════════
 
 function formatoTiempo(seg: number): string {
@@ -72,6 +78,64 @@ function BarrasSonando() {
   )
 }
 
+/** v0.11.1 — «una ventana aparte que se pueda cerrar»: el
+ * reflejo natural para salir es el botón ATRÁS. Mientras una
+ * capa está abierta apilamos una entrada en el historial: el
+ * ATRÁS la consume y cierra ESA capa (primero el modal ➕,
+ * después la pantalla completa) en vez de irse de la app. Si se
+ * cierra por UI (✕, ⬇, swipe), la entrada se retira sola para
+ * no dejar basura en el historial. */
+const capasHistorial: number[] = []
+let retirandoPropia = false
+
+function usarCapaHistorial(activo: boolean, cerrar: () => void) {
+  const cerrarRef = useRef(cerrar)
+  useEffect(() => {
+    cerrarRef.current = cerrar
+  }, [cerrar])
+
+  useEffect(() => {
+    if (!activo) return
+    const id = Math.random()
+    capasHistorial.push(id)
+    try {
+      history.pushState({ mtCapa: id }, '')
+    } catch {
+      /* WebView sin historial: el ATRÁS queda sin capa, no pasa nada */
+      return () => {
+        const i = capasHistorial.lastIndexOf(id)
+        if (i >= 0) capasHistorial.splice(i, 1)
+      }
+    }
+    const alRetroceder = () => {
+      if (retirandoPropia) {
+        retirandoPropia = false // era nuestra propia limpieza, no un ATRÁS
+        return
+      }
+      // solo la capa de ARRIBA reacciona (modal antes que la vista)
+      if (capasHistorial[capasHistorial.length - 1] !== id) return
+      capasHistorial.pop()
+      cerrarRef.current()
+    }
+    window.addEventListener('popstate', alRetroceder)
+    return () => {
+      window.removeEventListener('popstate', alRetroceder)
+      if (capasHistorial[capasHistorial.length - 1] === id) {
+        capasHistorial.pop()
+        const estado = history.state as { mtCapa?: number } | null
+        if (estado?.mtCapa === id) {
+          // cerró por UI: sacar nuestra entrada del historial
+          retirandoPropia = true
+          history.back()
+          window.setTimeout(() => {
+            retirandoPropia = false
+          }, 400)
+        }
+      }
+    }
+  }, [activo])
+}
+
 export function ReproductorCompleto() {
   const r = useReproductor()
   const { mostrar } = useToast()
@@ -86,6 +150,10 @@ export function ReproductorCompleto() {
   const [pidiendoLetra, setPidiendoLetra] = useState(false)
 
   const refsLineas = useRef(new Map<number, HTMLParagraphElement>())
+  /** El panel con scroll (letra/cola) — el auto-scroll lo mueve
+   * SOLO a él: scrollIntoView arrastraría también al root del
+   * reproductor (overflow-hidden) y «se comería» la portada. */
+  const panelRef = useRef<HTMLDivElement | null>(null)
   /** Último toque del usuario en el panel: la letra no lo persigue
    * unos segundos mientras lee o se mueve a mano. */
   const ultimoToqueRef = useRef(0)
@@ -106,6 +174,59 @@ export function ReproductorCompleto() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [r.vistaCompleta, r.cerrarVista])
+
+  // ── v0.11.1 — el botón ATRÁS (Android/navegador) cierra:
+  //    primero el modal ➕ si está abierto, después esta vista ──
+  usarCapaHistorial(r.vistaCompleta && !!c, r.cerrarVista)
+  usarCapaHistorial(modalLista && r.vistaCompleta && !!c, () => setModalLista(false))
+
+  // ── v0.11.1 — deslizar la portada hacia abajo cierra ────────
+  const [arrastre, setArrastre] = useState(0)
+  const [arrastrando, setArrastrando] = useState(false)
+  const inicioToque = useRef<{ x: number; y: number } | null>(null)
+  // el valor vivo del arrastre en un ref: así funciona aunque los
+  // eventos lleguen todos juntos (rafaga) sin esperar el render
+  const arrastreRef = useRef(0)
+
+  function alIniciarToque(e: React.TouchEvent) {
+    if (e.touches.length !== 1) return
+    inicioToque.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+  }
+
+  function alMoverToque(e: React.TouchEvent) {
+    const inicio = inicioToque.current
+    if (!inicio || e.touches.length !== 1) return
+    const dy = e.touches[0].clientY - inicio.y
+    const dx = e.touches[0].clientX - inicio.x
+    // arranca solo si el gesto es claramente hacia ABAJO
+    if (!arrastrando && !(dy > 14 && dy > Math.abs(dx) * 1.4)) return
+    const hasta = Math.max(0, dy)
+    arrastreRef.current = hasta
+    setArrastrando(true)
+    setArrastre(hasta)
+  }
+
+  function alTerminarToque() {
+    const d = arrastreRef.current
+    arrastreRef.current = 0
+    inicioToque.current = null
+    setArrastrando(false)
+    setArrastre(0)
+    if (d > 110) {
+      vibrar('ligera')
+      r.cerrarVista()
+    }
+  }
+
+  // ── v0.11.1 — consejo de cierre, UNA sola vez ────────────────
+  useEffect(() => {
+    if (!r.vistaCompleta || !c) return
+    if (leer('consejo-cierre-reproductor', false)) return
+    guardar('consejo-cierre-reproductor', true)
+    mostrar('Se cierra con ATRÁS, la ✕ de arriba o deslizando la portada — la música sigue', 'info', 4500)
+    // una sola vez en la vida del dispositivo
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [r.vistaCompleta])
 
   // ── letra con tiempos REALES de Suno (si la API los trae) ──
   const idCancion = c?.id
@@ -171,11 +292,17 @@ export function ReproductorCompleto() {
   }, [lineas, r.posicionSeg])
 
   // ── auto-scroll suave de la letra (salvo que el usuario esté
-  //    leyendo/moviéndose a mano: 4 s de respeto) ──────────────
+  //    leyendo/moviéndose a mano: 4 s de respeto). v0.11.1: se
+  //    scrollea SOLO el panel — scrollIntoView también movía al
+  //    root y la portada se iba arriba de la pantalla. ────────
   useEffect(() => {
     if (panel !== 'letra' || idxActual < 0) return
     if (Date.now() - ultimoToqueRef.current < 4000) return
-    refsLineas.current.get(idxActual)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    const cont = panelRef.current
+    const linea = refsLineas.current.get(idxActual)
+    if (!cont || !linea) return
+    const destino = linea.offsetTop - cont.clientHeight / 2 + linea.clientHeight / 2
+    cont.scrollTo({ top: Math.max(0, destino), behavior: 'smooth' })
   }, [idxActual, panel])
 
   const marcarToque = () => {
@@ -209,46 +336,75 @@ export function ReproductorCompleto() {
       role="dialog"
       aria-modal="true"
       aria-label="Reproductor a pantalla completa"
+      style={{
+        // v0.11.1 — la ventana sigue el dedo al deslizar para cerrar
+        transform: arrastre > 0 ? `translateY(${arrastre}px)` : undefined,
+        transition: arrastrando ? 'none' : 'transform .22s ease-out',
+      }}
     >
       {/* brillo decorativo, como el ambiente de la portada en Spotify */}
       <div aria-hidden className="pointer-events-none absolute -top-28 left-1/2 h-80 w-80 -translate-x-1/2 rounded-full bg-acento/20 blur-3xl" />
       <div aria-hidden className="pointer-events-none absolute -bottom-24 -right-20 h-72 w-72 rounded-full bg-acento/10 blur-3xl" />
 
-      {/* encabezado: cerrar + de dónde viene la cola */}
-      <div className="relative flex items-center justify-between gap-2 px-3 pb-1 pt-[max(env(safe-area-inset-top),10px)]">
-        <button
-          type="button"
-          onClick={() => {
-            vibrar('ligera')
-            r.cerrarVista()
-          }}
-          title="Volver (Esc)"
-          aria-label="Cerrar el reproductor"
-          className="rounded-full p-2 text-neutral-300 transition-colors hover:bg-white/10"
-        >
-          <ChevronDown className="h-6 w-6" />
-        </button>
-        <div className="min-w-0 flex-1 text-center">
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500">Sonando de</p>
-          <p className="truncate text-xs font-semibold text-neutral-300">{r.etiquetaCola || 'Tu biblioteca'}</p>
-        </div>
-        <span className="w-10 shrink-0" aria-hidden />
-      </div>
-
-      {/* portada */}
-      <div className="relative flex min-h-0 flex-1 items-center justify-center px-8 py-3">
-        {c.urlPortada ? (
-          <img
-            src={c.urlPortada}
-            alt={`Portada de ${c.titulo}`}
-            referrerPolicy="no-referrer"
-            className="aspect-square h-full max-h-[300px] w-auto max-w-full rounded-2xl object-cover shadow-2xl shadow-black/60 ring-1 ring-white/10"
-          />
-        ) : (
-          <div className="flex aspect-square h-full max-h-[300px] w-auto max-w-full items-center justify-center rounded-2xl bg-gradient-to-br from-acento/40 via-neutral-800 to-neutral-900 shadow-2xl shadow-black/60 ring-1 ring-white/10">
-            <Disc3 className={`h-1/2 w-1/2 text-white/80 ${r.sonando ? 'animate-[girar_7s_linear_infinite]' : ''}`} />
+      {/* zona superior — se desliza hacia abajo para cerrar (v0.11.1) */}
+      <div
+        className="relative z-10 flex min-h-0 flex-1 flex-col"
+        style={{ touchAction: 'none' }}
+        onTouchStart={alIniciarToque}
+        onTouchMove={alMoverToque}
+        onTouchEnd={alTerminarToque}
+        onTouchCancel={alTerminarToque}
+      >
+        {/* encabezado: ⬇ cerrar + de dónde viene la cola + ✕ cerrar */}
+        <div className="relative flex items-center justify-between gap-2 px-3 pb-1 pt-[max(env(safe-area-inset-top),12px)]">
+          <button
+            type="button"
+            onClick={() => {
+              vibrar('ligera')
+              r.cerrarVista()
+            }}
+            title="Bajar el reproductor (o desliza hacia abajo)"
+            aria-label="Bajar el reproductor"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-white transition-all hover:bg-white/25 active:scale-95"
+          >
+            <ChevronDown className="h-6 w-6" />
+          </button>
+          <div className="min-w-0 flex-1 text-center">
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500">Sonando de</p>
+            <p className="truncate text-xs font-semibold text-neutral-300">{r.etiquetaCola || 'Tu biblioteca'}</p>
           </div>
-        )}
+          <button
+            type="button"
+            onClick={() => {
+              vibrar('ligera')
+              r.cerrarVista()
+            }}
+            title="Cerrar (o desliza hacia abajo)"
+            aria-label="Cerrar el reproductor"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-white transition-all hover:bg-white/25 active:scale-95"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* manija: pistas de que la ventana se desliza para cerrar */}
+        <div aria-hidden className="mx-auto h-1 w-10 shrink-0 rounded-full bg-white/25" />
+
+        {/* portada */}
+        <div className="relative flex min-h-0 flex-1 items-center justify-center px-8 py-3">
+          {c.urlPortada ? (
+            <img
+              src={c.urlPortada}
+              alt={`Portada de ${c.titulo}`}
+              referrerPolicy="no-referrer"
+              className="aspect-square h-full max-h-[300px] w-auto max-w-full rounded-2xl object-cover shadow-2xl shadow-black/60 ring-1 ring-white/10"
+            />
+          ) : (
+            <div className="flex aspect-square h-full max-h-[300px] w-auto max-w-full items-center justify-center rounded-2xl bg-gradient-to-br from-acento/40 via-neutral-800 to-neutral-900 shadow-2xl shadow-black/60 ring-1 ring-white/10">
+              <Disc3 className={`h-1/2 w-1/2 text-white/80 ${r.sonando ? 'animate-[girar_7s_linear_infinite]' : ''}`} />
+            </div>
+          )}
+        </div>
       </div>
 
       {/* título + corazón + lista */}
@@ -415,6 +571,7 @@ export function ReproductorCompleto() {
 
       {/* panel con scroll */}
       <div
+        ref={panelRef}
         className="relative min-h-0 flex-1 overflow-y-auto px-6 pb-[max(env(safe-area-inset-bottom),18px)] pt-1"
         onPointerDown={marcarToque}
         onWheel={marcarToque}
