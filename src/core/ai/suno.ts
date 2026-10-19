@@ -219,6 +219,57 @@ function pistasDesdeRespuesta(r: RespuestaSuno, tituloAlternativo: string): Pist
   throw new Error('Suno API: la respuesta no trajo ninguna pista (taskId)')
 }
 
+/** v0.11.2 — tope de caracteres del CAMPO ESTILO que acepta
+ * Suno (docs.sunoapi.org: style, máximo 200). Pasarse puede
+ * rechazar el pedido entero (créditos perdidos). */
+export const LIMITE_ESTILO_SUNO = 200
+
+/** v0.11.2 — «le pedí solo voz femenina y salió mezclado»:
+ * NO es error del usuario. El modelo de Suno se entrenó con
+ * estilos en INGLÉS, así que el tag «voz femenina» en español
+ * lo interpreta a medias… y en géneros que en su entrenamiento
+ * son mayoría masculina (rock, metal…) a veces lo suelta y
+ * mezcla hombre y mujer.
+ *
+ * Este pase traduce los tags de voz a su forma canónica en
+ * inglés JUSTO ANTES DE ENVIAR a la API (la interfaz, los chips
+ * y lo guardado en la biblioteca quedan en español):
+ *   voz femenina   → female vocals  (+ refuerzo «solo female singer»)
+ *   voz masculina  → male vocals    (+ refuerzo «solo male singer»)
+ *   dúo de voces   → male and female duet vocals
+ *   a capela       → a cappella (la grafía inglesa correcta)
+ * También traduce las voces que llegan dentro de la esencia de
+ * los artistas (p. ej. «voz femenina operática» de Nightwish).
+ * El refuerzo «solo X singer» es positivo a propósito: pedir
+ * «no male vocals» (negativo) en estos modelos suele LOGRAR lo
+ * contrario, porque la atención cae en la palabra «male». */
+export function estiloParaSuno(estilo: string): string {
+  const e0 = estilo.trim()
+  if (!e0) return e0
+  const enMinusculas = e0.toLowerCase()
+  const pideFemenina = enMinusculas.includes('voz femenina')
+  const pideMasculina = enMinusculas.includes('voz masculina')
+  const pideDuo = enMinusculas.includes('dúo de voces') || enMinusculas.includes('duo de voces')
+  let e = e0
+    .replace(/voz femenina/gi, 'female vocals')
+    .replace(/voz masculina/gi, 'male vocals')
+    .replace(/d[úu]o de voces/gi, 'male and female duet vocals')
+    .replace(/\ba capela\b/gi, 'a cappella')
+  // refuerzo solo cuando el pedido es de UNA voz (si pidió dúo,
+  // mezclar es justamente lo buscado — nada que reforzar).
+  if (pideFemenina && !pideDuo) e += ', solo female singer'
+  if (pideMasculina && !pideDuo) e += ', solo male singer'
+  // tope de 200 del estilo: si el refuerzo no entró, se van
+  // soltando tags del FINAL (nunca el primero, que es el género
+  // principal) hasta que quepa entero.
+  if (e.length > LIMITE_ESTILO_SUNO) {
+    const partes = e.split(',').map((p) => p.trim()).filter(Boolean)
+    while (partes.length > 1 && partes.join(', ').length > LIMITE_ESTILO_SUNO) partes.pop()
+    e = partes.join(', ')
+  }
+  return e
+}
+
 /**
  * Lanza la generación de una canción (Custom Mode: letra propia
  * + estilo). Devuelve las pistas creadas (normalmente 2 versiones)
@@ -257,7 +308,12 @@ export async function generarMusica(
       // (docs.sunoapi.org, custom mode) — se mandan ambas por si la
       // URL base del usuario apunta a una versión vieja de la API.
       lyrics: op.instrumental ? '' : letraAEnviar,
-      style: op.estilo,
+      // v0.11.2 — el estilo viaja TRADUCIDO a inglés en lo que es
+      // voz (la frontera de la API): «voz femenina» a secas Suno
+      // la entiende a medias y mezcla hombre y mujer; «female
+      // vocals, solo female singer» sí lo respeta. Lo que se guarda
+      // en la biblioteca queda en español, como siempre.
+      style: estiloParaSuno(op.estilo),
       title: op.titulo,
       customMode: true,
       instrumental: op.instrumental,
@@ -301,7 +357,10 @@ export async function extenderMusica(
       // igual que en generate: la API nueva prioriza lyrics; ambas van
       lyrics: op.instrumental ? '' : letraAEnviar,
       prompt: op.instrumental ? '' : letraAEnviar,
-      style: op.estilo,
+      // v0.11.2 — misma frontera que generate: la voz pide en
+      // español, Suno la recibe en inglés reforzado (para que la
+      // continuación respete la MISMA voz que la canción original).
+      style: estiloParaSuno(op.estilo),
       title: op.titulo,
       instrumental: op.instrumental,
       // ⚠️ docs: el modelo debe ser el MISMO de la canción original
