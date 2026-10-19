@@ -6,6 +6,7 @@ import { ReproductorProvider, useReproductor } from '@/core/audio/reproductor'
 import { Header } from '@/components/layout/Header'
 import { BottomNav } from '@/components/layout/BottomNav'
 import { MiniReproductor } from '@/components/layout/MiniReproductor'
+import { ReproductorCompleto } from '@/components/layout/ReproductorCompleto'
 import { DashboardView } from '@/views/DashboardView'
 import { LetrasView } from '@/views/LetrasView'
 import { CrearView } from '@/views/CrearView'
@@ -64,6 +65,9 @@ function Contenido() {
         {pestanna === 'ajustes' && <AjustesView />}
       </main>
       <MiniReproductor />
+      {/* v0.11.0 — la pantalla grande tipo Spotify, encima de
+          todo lo demás (se abre tocando la mini-barra) */}
+      <ReproductorCompleto />
       <BottomNav activa={pestanna} alCambiar={setPestanna} />
     </div>
   )

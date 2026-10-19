@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { leer, guardar } from '@/core/storage/almacenamiento'
 import { leerAudio } from '@/core/storage/audio'
 import { EVENTO_CANCIONES } from '@/core/storage/canciones'
 import { useToast } from '@/components/ui/Toast'
@@ -27,7 +28,13 @@ import type { Cancion } from '@/types'
 //     así «siguiente» sigue lo que estabas escuchando
 //   • el audio sale de la copia local (IndexedDB) si existe:
 //     respaldada 💾 o Lyria — el CDN solo como respaldo
+//   • v0.11.0: 🔁 repetir (una/cola, se recuerda), etiqueta de la
+//     sección que suena («❤️ Favoritas», «🎵 Gym»…) y la pantalla
+//     completa se abre desde la mini-barra
 // ═══════════════════════════════════════════════════════════
+
+/** v0.11.0 — 🔁 modo repetir: nada, toda la cola o esta canción. */
+export type ModoRepetir = 'off' | 'cola' | 'una'
 
 interface CtxReproductor {
   /** La canción cargada ahora (datos frescos, no una foto vieja). */
@@ -38,8 +45,10 @@ interface CtxReproductor {
   cargando: boolean
   posicionSeg: number
   duracionSeg: number
-  /** Carga una cola (carpeta, lista, favoritas…) y arranca en esa canción. */
-  reproducir: (canciones: Cancion[], idCancion: string) => void
+  /** Carga una cola (carpeta, lista, favoritas…) y arranca en esa
+   * canción. v0.11.0: `etiqueta` es el nombre de la sección
+   * («❤️ Favoritas», «🎵 Gym»…) — sin ella conserva la actual. */
+  reproducir: (canciones: Cancion[], idCancion: string, etiqueta?: string) => void
   /** Play/pausa de la canción cargada. */
   alternar: () => void
   siguiente: () => void
@@ -48,6 +57,15 @@ interface CtxReproductor {
   buscarSeg: (seg: number) => void
   /** Cierra el reproductor (pausa y limpia la mini-barra). */
   cerrar: () => void
+  /** v0.11.0 — 🔁 repetir: 'off' | 'cola' (toda la lista) | 'una' (esta canción). */
+  repetir: ModoRepetir
+  alternarRepetir: () => void
+  /** v0.11.0 — de qué sección salió la cola («❤️ Favoritas», «🎵 Gym»…). */
+  etiquetaCola: string
+  /** v0.11.0 — ¿está abierta la pantalla completa del reproductor? */
+  vistaCompleta: boolean
+  abrirVista: () => void
+  cerrarVista: () => void
 }
 
 const Ctx = createContext<CtxReproductor | null>(null)
@@ -58,7 +76,11 @@ export function ReproductorProvider({ children }: { children: ReactNode }) {
   const [actual, setActual] = useState<Cancion | null>(null)
   const [cola, setCola] = useState<Cancion[]>([])
   const [sonando, setSonando] = useState(false)
-  const [aleatorio, setAleatorio] = useState(false)
+  // 🔀🔁 v0.11.0 — aleatorio y repetir se acuerdan entre sesiones
+  const [aleatorio, setAleatorio] = useState<boolean>(() => leer('reproductor-aleatorio', false))
+  const [repetir, setRepetir] = useState<ModoRepetir>(() => leer<ModoRepetir>('reproductor-repetir', 'off'))
+  const [etiquetaCola, setEtiquetaCola] = useState('')
+  const [vistaCompleta, setVistaCompleta] = useState(false)
   const [cargando, setCargando] = useState(false)
   const [posicionSeg, setPosicionSeg] = useState(0)
   const [duracionSeg, setDuracionSeg] = useState(0)
@@ -66,7 +88,8 @@ export function ReproductorProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const actualRef = useRef<Cancion | null>(null)
   const colaRef = useRef<Cancion[]>([])
-  const aleatorioRef = useRef(false)
+  const aleatorioRef = useRef(aleatorio)
+  const repetirRef = useRef(repetir)
   /** src resuelto por canción (data: de IndexedDB o URL del CDN). */
   const srcCache = useRef(new Map<string, string>())
 
@@ -151,7 +174,16 @@ export function ReproductorProvider({ children }: { children: ReactNode }) {
       }
     }
     const alDuracion = () => setDuracionSeg(Number.isFinite(audio.duration) ? audio.duration : 0)
-    const alTerminar = () => accionesRef.current.siguiente()
+    const alTerminar = () => {
+      // 🔁 v0.11.0 — repetir UNA: la misma otra vez; si no, la que sigue
+      const audio = audioRef.current
+      if (repetirRef.current === 'una' && audio) {
+        audio.currentTime = 0
+        void audio.play().catch(() => {})
+        return
+      }
+      accionesRef.current.siguiente()
+    }
     const alFallar = () => {
       const c = actualRef.current
       if (!c) return
@@ -196,6 +228,8 @@ export function ReproductorProvider({ children }: { children: ReactNode }) {
       fijarActual(lista[j])
     } else if (i < lista.length - 1) {
       fijarActual(lista[i + 1])
+    } else if (repetirRef.current === 'cola' && lista.length > 0) {
+      fijarActual(lista[0]) // 🔁 repetir COLA: arranca de nuevo
     } else {
       // fin de la cola: queda en la última, al principio, en pausa
       const audio = audioRef.current
@@ -221,7 +255,18 @@ export function ReproductorProvider({ children }: { children: ReactNode }) {
   const alternarAleatorio = useCallback(() => {
     setAleatorio((a) => {
       aleatorioRef.current = !a
+      guardar('reproductor-aleatorio', !a)
       return !a
+    })
+  }, [])
+
+  /** 🔁 v0.11.0 — ciclo off → cola (toda la lista) → una (esta) → off. */
+  const alternarRepetir = useCallback(() => {
+    setRepetir((m) => {
+      const nuevo: ModoRepetir = m === 'off' ? 'cola' : m === 'cola' ? 'una' : 'off'
+      repetirRef.current = nuevo
+      guardar('reproductor-repetir', nuevo)
+      return nuevo
     })
   }, [])
 
@@ -235,7 +280,7 @@ export function ReproductorProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const reproducir = useCallback(
-    (canciones: Cancion[], idCancion: string) => {
+    (canciones: Cancion[], idCancion: string, etiqueta?: string) => {
       const lista = canciones.filter(
         (c) => c.estado === 'lista' && (c.urlAudio || c.audioLocal || c.respaldada),
       )
@@ -244,6 +289,9 @@ export function ReproductorProvider({ children }: { children: ReactNode }) {
         mostrar('Esa canción todavía no tiene audio', 'info')
         return
       }
+      // v0.11.0 — sin etiqueta conserva la de la cola (saltar DENTRO
+      // de la cola no cambia de dónde salió)
+      if (etiqueta !== undefined) setEtiquetaCola(etiqueta)
       colaRef.current = lista
       setCola(lista)
       if (actualRef.current?.id === idCancion) {
@@ -273,7 +321,13 @@ export function ReproductorProvider({ children }: { children: ReactNode }) {
     setSonando(false)
     setPosicionSeg(0)
     setDuracionSeg(0)
+    setEtiquetaCola('')
+    setVistaCompleta(false)
   }, [])
+
+  // ── v0.11.0 — la pantalla completa (se abre desde la mini-barra) ─
+  const abrirVista = useCallback(() => setVistaCompleta(true), [])
+  const cerrarVista = useCallback(() => setVistaCompleta(false), [])
 
   // ── refs a los controles (para los handlers de mediaSession
   //    y el evento ended, que se registran una sola vez) ──────
@@ -364,6 +418,9 @@ export function ReproductorProvider({ children }: { children: ReactNode }) {
       cola,
       sonando,
       aleatorio,
+      repetir,
+      etiquetaCola,
+      vistaCompleta,
       cargando,
       posicionSeg,
       duracionSeg,
@@ -372,10 +429,13 @@ export function ReproductorProvider({ children }: { children: ReactNode }) {
       siguiente,
       anterior,
       alternarAleatorio,
+      alternarRepetir,
       buscarSeg,
       cerrar,
+      abrirVista,
+      cerrarVista,
     }),
-    [actual, cola, sonando, aleatorio, cargando, posicionSeg, duracionSeg, reproducir, alternar, siguiente, anterior, alternarAleatorio, buscarSeg, cerrar],
+    [actual, cola, sonando, aleatorio, repetir, etiquetaCola, vistaCompleta, cargando, posicionSeg, duracionSeg, reproducir, alternar, siguiente, anterior, alternarAleatorio, alternarRepetir, buscarSeg, cerrar, abrirVista, cerrarVista],
   )
 
   return (

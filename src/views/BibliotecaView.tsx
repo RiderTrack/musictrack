@@ -733,13 +733,13 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
   /** 🎧 v0.10.0 — tocar ▶ en una tarjeta: si ya es la que suena,
    * pausa/reanuda; si no, arma la cola con su sección (carpeta,
    * favoritas, lista) y arranca ahí. */
-  function alternarReproduccion(c: Cancion, seccion: Cancion[]) {
+  function alternarReproduccion(c: Cancion, seccion: Cancion[], etiqueta = '📚 Biblioteca') {
     vibrar('ligera')
     if (reproductor.actual?.id === c.id) {
       reproductor.alternar()
       return
     }
-    reproductor.reproducir(seccion, c.id)
+    reproductor.reproducir(seccion, c.id, etiqueta)
   }
 
   /** ❤️ v0.10.0 — marcar / desmarcar favorita. */
@@ -806,7 +806,7 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
   /** v0.9.1 — la TARJETA de una canción (antes era el map directo
    * de la lista): ahora se dibuja en «En curso» y adentro de cada
    * CARPETA de estilo. Novedad: el título se puede EDITAR (✏️). */
-  function renderTarjeta(c: Cancion, seccion: Cancion[]) {
+  function renderTarjeta(c: Cancion, seccion: Cancion[], etiqueta = '📚 Biblioteca') {
     // v0.6.4: tarea «generando» con edad de muerta → la tarjeta
     // cambia de cara (ámbar, sin spinner) y deja de prometer.
     const muerta = c.estado === 'generando' && c.motor !== 'lyria' && edadMin(c.fecha) >= MIN_TAREA_MUERTA
@@ -1009,7 +1009,7 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
                           return (
                             <button
                               type="button"
-                              onClick={() => alternarReproduccion(c, seccion)}
+                              onClick={() => alternarReproduccion(c, seccion, etiqueta)}
                               className={`flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl text-xs font-bold transition-colors ${
                                 esActual
                                   ? 'bg-acento text-black hover:brightness-110'
@@ -1225,7 +1225,7 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
                     onClick={(e) => {
                       e.preventDefault()
                       e.stopPropagation()
-                      reproductor.reproducir(favoritasVisibles, favoritasVisibles[0].id)
+                      reproductor.reproducir(favoritasVisibles, favoritasVisibles[0].id, '❤️ Favoritas')
                     }}
                     title="Reproducir las favoritas"
                     className="rounded-lg p-1 text-acento transition-colors hover:bg-acento/10"
@@ -1239,7 +1239,7 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
                 </span>
               </summary>
               <ul className="space-y-2.5 border-t border-red-500/10 px-3 py-2.5">
-                {favoritasVisibles.map((c) => renderTarjeta(c, favoritasVisibles))}
+                {favoritasVisibles.map((c) => renderTarjeta(c, favoritasVisibles, '❤️ Favoritas'))}
               </ul>
             </details>
           )}
@@ -1278,7 +1278,7 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
                           onClick={(e) => {
                             e.preventDefault()
                             e.stopPropagation()
-                            if (cs.length) reproductor.reproducir(cs, cs[0].id)
+                            if (cs.length) reproductor.reproducir(cs, cs[0].id, `🎵 ${l.nombre}`)
                           }}
                           title={`Reproducir «${l.nombre}»`}
                           className="rounded-lg p-1 text-acento transition-colors hover:bg-acento/10"
@@ -1306,7 +1306,7 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
                       </span>
                     </summary>
                     {cs.length ? (
-                      <ul className="space-y-2.5 px-2 pb-2 pt-1">{cs.map((c) => renderTarjeta(c, cs))}</ul>
+                      <ul className="space-y-2.5 px-2 pb-2 pt-1">{cs.map((c) => renderTarjeta(c, cs, `🎵 ${l.nombre}`))}</ul>
                     ) : (
                       <p className="px-2.5 pb-2 pt-1 text-xs text-neutral-400">
                         Vacía — tocá el ➕ de cualquier canción para agregarla
@@ -1387,7 +1387,7 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
                         onClick={(e) => {
                           e.preventDefault()
                           e.stopPropagation()
-                          reproductor.reproducir(cs, cs[0].id)
+                          reproductor.reproducir(cs, cs[0].id, `📁 ${carpetaBonita(nombre)}`)
                         }}
                         title={`Reproducir la carpeta ${carpetaBonita(nombre)}`}
                         className="rounded-lg p-1 text-acento transition-colors hover:bg-acento/10"
@@ -1401,7 +1401,7 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
                     </span>
                   </summary>
                   <ul className="space-y-2.5 border-t border-neutral-200/70 px-3 py-2.5 dark:border-neutral-800/70">
-                    {cs.map((c) => renderTarjeta(c, cs))}
+                    {cs.map((c) => renderTarjeta(c, cs, `📁 ${carpetaBonita(nombre)}`))}
                   </ul>
                 </details>
               ))}

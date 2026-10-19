@@ -35,6 +35,12 @@
   to { transform: rotate(360deg); }
 }
 
+/* Barritas de «está sonando» (cola del reproductor completo) */
+@keyframes saltitos {
+  0%, 100% { transform: scaleY(0.35); }
+  50% { transform: scaleY(1); }
+}
+
 html {
   -webkit-tap-highlight-color: transparent;
 }

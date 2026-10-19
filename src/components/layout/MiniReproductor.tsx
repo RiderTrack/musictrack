@@ -9,6 +9,8 @@ import { vibrar } from '@/core/natives/plataforma'
 // de navegación y solo aparece cuando hay algo cargado. Los
 // controles de la pantalla de bloqueo los maneja mediaSession
 // (en el provider del reproductor).
+// v0.11.0 — tocá la portada o el título y se abre la PANTALLA
+// COMPLETA del reproductor (ReproductorCompleto.tsx).
 // ═══════════════════════════════════════════════════════════
 
 function formatoTiempo(seg: number): string {
@@ -53,29 +55,38 @@ export function MiniReproductor() {
         </div>
 
         <div className="flex items-center gap-2.5 py-1">
-          {/* portada */}
-          {r.actual.urlPortada ? (
-            <img
-              src={r.actual.urlPortada}
-              alt=""
-              referrerPolicy="no-referrer"
-              className={`h-10 w-10 shrink-0 rounded-lg object-cover ${r.sonando ? 'animate-[girar_6s_linear_infinite]' : ''}`}
-            />
-          ) : (
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-acento/10 text-acento">
-              <Disc3 className={`h-5 w-5 ${r.sonando ? 'animate-spin' : ''}`} />
+          {/* portada + título — tocá acá para la pantalla completa (v0.11.0) */}
+          <button
+            type="button"
+            onClick={() => {
+              vibrar('ligera')
+              r.abrirVista()
+            }}
+            title="Abrir el reproductor completo"
+            aria-label="Abrir el reproductor completo"
+            className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+          >
+            {r.actual.urlPortada ? (
+              <img
+                src={r.actual.urlPortada}
+                alt=""
+                referrerPolicy="no-referrer"
+                className={`h-10 w-10 shrink-0 rounded-lg object-cover ${r.sonando ? 'animate-[girar_6s_linear_infinite]' : ''}`}
+              />
+            ) : (
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-acento/10 text-acento">
+                <Disc3 className={`h-5 w-5 ${r.sonando ? 'animate-spin' : ''}`} />
+              </span>
+            )}
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-semibold text-neutral-900 dark:text-white">{r.actual.titulo}</span>
+              <span className="block truncate text-[10px] text-neutral-400">
+                {r.cargando ? 'cargando el audio…' : r.sonando ? '▶ sonando' : 'en pausa'}
+                {indice >= 0 && r.cola.length > 1 && ` · ${indice + 1} de ${r.cola.length}`}
+                {(r.actual.respaldada || r.actual.audioLocal) && ' · 💾 en tu dispositivo'}
+              </span>
             </span>
-          )}
-
-          {/* título + estado */}
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-neutral-900 dark:text-white">{r.actual.titulo}</p>
-            <p className="truncate text-[10px] text-neutral-400">
-              {r.cargando ? 'cargando el audio…' : r.sonando ? '▶ sonando' : 'en pausa'}
-              {indice >= 0 && r.cola.length > 1 && ` · ${indice + 1} de ${r.cola.length}`}
-              {(r.actual.respaldada || r.actual.audioLocal) && ' · 💾 en tu dispositivo'}
-            </p>
-          </div>
+          </button>
 
           {/* controles */}
           <button
