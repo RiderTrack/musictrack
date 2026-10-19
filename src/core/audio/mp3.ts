@@ -27,10 +27,21 @@ export interface PalabraConTiempo {
   endS: number
 }
 
+/** v0.13.0 — 🎤 una palabra DENTRO de una línea, para el karaoke
+ * palabra por palabra (la palabra que se está cantando se enciende
+ * antes que el resto de la línea). Tiempos reales de Suno o
+ * interpolados si la letra es estimada. */
+export interface PalabraLrc {
+  texto: string
+  startS: number
+}
+
 /** Una línea de letra lista para el .lrc. */
 export interface LineaLrc {
   texto: string
   startS: number
+  /** v0.13.0 — palabras con su tiempo (karaoke palabra por palabra). */
+  palabras?: PalabraLrc[]
 }
 
 export interface EtiquetasMp3 {
@@ -239,8 +250,13 @@ export function lineasConTiempo(letra: string, palabras: PalabraConTiempo[]): Li
     if (!cantables) continue
     const primera = palabras[idx]
     if (!primera) break // la API devolvió menos palabras: hasta acá
+    // v0.13.0 — las palabras de ESTA línea viajan con la línea:
+    // el karaoke las enciende una por una mientras se cantan.
+    const propias: PalabraLrc[] = palabras
+      .slice(idx, idx + cantables)
+      .map((p) => ({ texto: p.palabra, startS: p.startS }))
     idx += cantables
-    out.push({ texto: linea.trim(), startS: primera.startS })
+    out.push({ texto: linea.trim(), startS: primera.startS, palabras: propias })
   }
   return out
 }
@@ -254,6 +270,27 @@ export function lineasConTiempo(letra: string, palabras: PalabraConTiempo[]): Li
  * Devuelve [] si no hay duración conocida (mejor no mandar un .lrc
  * con puros inventos que uno vacío).
  */
+/** v0.13.0 — palabras de una línea con tiempos INTERPOLADOS entre
+ * el arranque de la línea y el de la siguiente: sin la letra
+ * sincronizada de Suno igual hay karaoke palabra por palabra
+ * (aproximado, pero se lee siguiendo el ritmo). Peso por longitud:
+ * las palabras largas duran más que las cortitas. */
+function palabrasInterpoladas(texto: string, desdeS: number, hastaS: number): PalabraLrc[] {
+  const crudas = texto
+    .replace(/\[[^\]]*\]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+  if (!crudas.length) return []
+  const pesos = crudas.map((p) => Math.max(2, p.length))
+  const total = pesos.reduce((a, b) => a + b, 0)
+  let acum = 0
+  return crudas.map((p, i) => {
+    const startS = desdeS + (acum / total) * (hastaS - desdeS)
+    acum += pesos[i]
+    return { texto: p, startS }
+  })
+}
+
 export function estimarLineasConTiempo(letra: string, duracionSeg?: number): LineaLrc[] {
   if (!duracionSeg || duracionSeg < 10) return []
   const lineas = letra
@@ -266,9 +303,15 @@ export function estimarLineasConTiempo(letra: string, duracionSeg?: number): Lin
   const intro = Math.min(12, duracionSeg * 0.08)
   const canto = Math.max(10, duracionSeg - intro - 4)
   let acum = 0
-  return lineas.map((texto, i) => {
+  const bases = lineas.map((texto, i) => {
     const startS = intro + (acum / total) * canto
     acum += pesos[i]
     return { texto, startS }
+  })
+  // v0.13.0 — cada línea lleva sus palabras interpoladas hasta el
+  // arranque de la siguiente (la última estira 4 s: final musical)
+  return bases.map((l, i) => {
+    const fin = bases[i + 1]?.startS ?? l.startS + 4
+    return { ...l, palabras: palabrasInterpoladas(l.texto, l.startS, fin) }
   })
 }

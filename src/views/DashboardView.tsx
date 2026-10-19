@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Bell, Cpu, Disc3, Download, Library, ListMusic, Music2, Smartphone, User, Wand2, X } from 'lucide-react'
+import { Bell, Cpu, Disc3, Download, Heart, Headphones, Library, ListMusic, Music2, Smartphone, User, Wand2, X } from 'lucide-react'
 import { APP } from '@/data/app'
 import { KPI } from '@/components/ui/KPI'
 import { Boton } from '@/components/ui/Boton'
 import { useToast } from '@/components/ui/Toast'
 import { useAuth } from '@/core/auth/useAuth'
+import { useReproductor } from '@/core/audio/reproductor'
+import { leerListas } from '@/core/storage/listas'
 import { firebaseConfigurado } from '@/services/firebase'
 import { leerAjustes, contarClaves, descargarRespaldo, leer } from '@/core/storage/almacenamiento'
 import { notificar } from '@/core/notificaciones/notificaciones'
@@ -26,9 +28,11 @@ import { modeloSunoBonito, type Cancion, type Letra, type PestannaId } from '@/t
 export function DashboardView({ irA }: { irA: (p: PestannaId) => void }) {
   const { sesion } = useAuth()
   const { mostrar } = useToast()
+  const reproductor = useReproductor()
   const ajustes = leerAjustes()
   const letras = leer<Letra[]>('letras', [])
   const canciones = leer<Cancion[]>('canciones', [])
+  const listas = leerListas()
 
   const hora = new Date().getHours()
   const saludo = hora < 12 ? 'Buenos días' : hora < 19 ? 'Buenas tardes' : 'Buenas noches'
@@ -171,6 +175,71 @@ export function DashboardView({ irA }: { irA: (p: PestannaId) => void }) {
         />
       </section>
 
+      {/* 📊 v0.13.0 — Tus números: escuchas, favoritas y lo que
+          más suena en tu biblioteca (contador del reproductor) */}
+      {canciones.filter((c) => c.estado === 'lista').length > 0 && (
+        <section aria-label="Tus números">
+          <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-neutral-400">Tus números</h3>
+          <div className="grid grid-cols-3 gap-3">
+            <KPI
+              icono={<Headphones className="h-4 w-4" />}
+              etiqueta="Escuchas"
+              valor={`${canciones.reduce((a, c) => a + (c.reproducciones ?? 0), 0)}`}
+              detalle="veces que sonaron"
+            />
+            <KPI
+              icono={<Heart className="h-4 w-4" />}
+              etiqueta="Favoritas"
+              valor={`${canciones.filter((c) => c.favorita).length}`}
+              detalle="con corazón ❤️"
+            />
+            <KPI
+              icono={<ListMusic className="h-4 w-4" />}
+              etiqueta="Listas"
+              valor={`${listas.length}`}
+              detalle="tuyas"
+            />
+          </div>
+          {canciones.some((c) => (c.reproducciones ?? 0) > 0) && (
+            <div className="mt-3 rounded-2xl border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
+              <p className="pb-1.5 text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+                Lo más escuchado
+              </p>
+              <ul>
+                {[...canciones]
+                  .filter((c) => (c.reproducciones ?? 0) > 0)
+                  .sort((a, b) => (b.reproducciones ?? 0) - (a.reproducciones ?? 0))
+                  .slice(0, 3)
+                  .map((c, i) => (
+                    <li key={c.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          vibrar('ligera')
+                          reproductor.reproducir(
+                            canciones.filter((x) => x.estado === 'lista'),
+                            c.id,
+                            '🎧 Lo más escuchado',
+                          )
+                        }}
+                        className="flex w-full items-center gap-3 rounded-xl px-1.5 py-1.5 text-left transition-colors hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                      >
+                        <span className="w-4 text-center text-xs font-black text-neutral-400">{i + 1}</span>
+                        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-neutral-900 dark:text-white">
+                          {c.titulo}
+                        </span>
+                        <span className="shrink-0 text-[11px] font-bold tabular-nums text-acento">
+                          {c.reproducciones} 🎧
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          )}
+        </section>
+      )}
+
       {/* Acciones rápidas */}
       <section>
         <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-neutral-400">Acciones rápidas</h3>
@@ -186,6 +255,9 @@ export function DashboardView({ irA }: { irA: (p: PestannaId) => void }) {
           </Boton>
           <Boton variante="secundario" icono={<Library className="h-4 w-4" />} onClick={() => irA('biblioteca')}>
             Mi biblioteca
+          </Boton>
+          <Boton variante="secundario" icono={<Headphones className="h-4 w-4" />} onClick={() => irA('reproductor')}>
+            Suena ahora 🎧
           </Boton>
           <Boton variante="secundario" icono={<Bell className="h-4 w-4" />} onClick={probarNotificacion}>
             Notificación

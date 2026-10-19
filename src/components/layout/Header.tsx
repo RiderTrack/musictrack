@@ -1,4 +1,4 @@
-import { LogIn, LogOut, Monitor, Moon, Sun } from 'lucide-react'
+import { Contrast, LogIn, LogOut, Monitor, Moon, Sun } from 'lucide-react'
 import { APP } from '@/data/app'
 import { useTema } from '@/core/theme/TemaProvider'
 import { useAuth } from '@/core/auth/useAuth'
@@ -17,10 +17,15 @@ export function Header() {
 
   function cambiarTema() {
     vibrar()
-    const orden = ['oscuro', 'claro', 'auto'] as const
+    // v0.13.0 — el ciclo ahora pasa por AMOLED (negro puro)
+    const orden = ['oscuro', 'amoled', 'claro', 'auto'] as const
     const siguiente = orden[(orden.indexOf(tema) + 1) % orden.length]
     fijarTema(siguiente)
-    mostrar(`Tema: ${siguiente}`, 'info', 1400)
+    mostrar(
+      siguiente === 'amoled' ? 'Tema: AMOLED — negro puro 🖤' : `Tema: ${siguiente}`,
+      'info',
+      1400,
+    )
   }
 
   async function manejarSesion() {
@@ -61,6 +66,8 @@ export function Header() {
           >
             {tema === 'oscuro' ? (
               <Moon className="h-5 w-5" />
+            ) : tema === 'amoled' ? (
+              <Contrast className="h-5 w-5" />
             ) : tema === 'claro' ? (
               <Sun className="h-5 w-5" />
             ) : (

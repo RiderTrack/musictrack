@@ -152,8 +152,8 @@ export function MiniReproductor() {
               vibrar('ligera')
               r.cerrar()
             }}
-            title="Cerrar el reproductor"
-            aria-label="Cerrar el reproductor"
+            title="Detener la música y cerrar la barra"
+            aria-label="Detener la música"
             className="flex h-9 w-9 items-center justify-center rounded-xl text-neutral-400 transition-colors hover:text-neutral-700 dark:hover:text-neutral-200"
           >
             <X className="h-4 w-4" />

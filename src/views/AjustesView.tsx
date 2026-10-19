@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Bot, Cloud, Database, Download, Eye, EyeOff, Info, KeyRound, LogIn, LogOut, Music2, Palette, Piano, RefreshCw, RotateCcw, Upload, User } from 'lucide-react'
+import { Bot, Check, Cloud, Database, Download, Eye, EyeOff, Info, KeyRound, LogIn, LogOut, Music2, Palette, Piano, RefreshCw, RotateCcw, Upload, User } from 'lucide-react'
 import { APP } from '@/data/app'
 import { leerAjustes, leer, guardar, descargarRespaldo, importarRespaldo, contarClaves } from '@/core/storage/almacenamiento'
 import { respaldarNube, restaurarNube } from '@/core/sync/sync'
@@ -19,7 +19,7 @@ import {
 } from '@/services/firebase'
 import { plataformaActual, vibrar, abrirURL } from '@/core/natives/plataforma'
 import { buscarUltimaVersion, esMasNueva, type InfoActualizacion } from '@/core/actualizacion/actualizacion'
-import { AJUSTES_POR_DEFECTO, MODELOS_CLAUDE, MODELOS_LYRIA, MODELOS_SUNO, MODELOS_SUNO_VIEJOS, modeloClaudeConocido, type Ajustes, type Tema } from '@/types'
+import { ACENTOS, AJUSTES_POR_DEFECTO, MODELOS_CLAUDE, MODELOS_LYRIA, MODELOS_SUNO, MODELOS_SUNO_VIEJOS, modeloClaudeConocido, type Ajustes, type Tema } from '@/types'
 
 // ═══════════════════════════════════════════════════════════
 // ⚙️ AJUSTES — el panel de control del esqueleto:
@@ -30,7 +30,7 @@ import { AJUSTES_POR_DEFECTO, MODELOS_CLAUDE, MODELOS_LYRIA, MODELOS_SUNO, MODEL
 
 export function AjustesView() {
   const { mostrar } = useToast()
-  const { tema, fijarTema } = useTema()
+  const { tema, fijarTema, acento, fijarAcento } = useTema()
   const { sesion, loginGoogle, salir } = useAuth()
   const [ajustes, setAjustes] = useState<Ajustes>(leerAjustes)
   const [verToken, setVerToken] = useState(false)
@@ -212,6 +212,7 @@ export function AjustesView() {
 
   const Temas: Array<{ id: Tema; etiqueta: string }> = [
     { id: 'oscuro', etiqueta: '🌙 Oscuro' },
+    { id: 'amoled', etiqueta: '🖤 AMOLED' },
     { id: 'claro', etiqueta: '☀️ Claro' },
     { id: 'auto', etiqueta: '🔄 Auto' },
   ]
@@ -426,7 +427,7 @@ export function AjustesView() {
         <h2 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-neutral-400">
           <Palette className="h-4 w-4" /> Apariencia
         </h2>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           {Temas.map((t) => (
             <button
               key={t.id}
@@ -444,6 +445,34 @@ export function AjustesView() {
             </button>
           ))}
         </div>
+        {/* 🎨 v0.13.0 — acento de color de toda la app */}
+        <label className="mb-2 mt-4 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+          Color de acento
+        </label>
+        <div className="flex flex-wrap gap-2.5">
+          {ACENTOS.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() => {
+                vibrar('ligera')
+                fijarAcento(a.id)
+              }}
+              title={`Acento ${a.etiqueta.toLowerCase()}`}
+              aria-label={`Acento ${a.etiqueta}`}
+              aria-pressed={acento === a.id}
+              className={`flex h-10 w-10 items-center justify-center rounded-full transition-all active:scale-90 ${
+                acento === a.id ? 'ring-2 ring-offset-2 ring-neutral-400 dark:ring-offset-neutral-900' : 'hover:scale-105'
+              }`}
+              style={{ backgroundColor: a.color }}
+            >
+              {acento === a.id && <Check className="h-5 w-5 text-white drop-shadow" />}
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-[11px] text-neutral-400">
+          AMOLED pinta los fondos de negro puro: en pantallas OLED ahorra batería y se ve más premium.
+        </p>
       </section>
 
       {/* ── Datos ──────────────────────────────────────── */}

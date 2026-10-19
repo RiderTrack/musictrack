@@ -10,9 +10,9 @@ import {
 } from 'react'
 import { leer, guardar } from '@/core/storage/almacenamiento'
 import { leerAudio } from '@/core/storage/audio'
-import { EVENTO_CANCIONES } from '@/core/storage/canciones'
+import { actualizarCancion, EVENTO_CANCIONES } from '@/core/storage/canciones'
 import { useToast } from '@/components/ui/Toast'
-import type { Cancion } from '@/types'
+import { portadaDe, type Cancion } from '@/types'
 
 // ═══════════════════════════════════════════════════════════
 // 🎧 REPRODUCTOR ÚNICO GLOBAL (v0.10.0) — «que se sienta como
@@ -66,6 +66,15 @@ interface CtxReproductor {
   vistaCompleta: boolean
   abrirVista: () => void
   cerrarVista: () => void
+  /** v0.13.0 — ⏱ timer de sueño: segundos que faltan para pausar
+   * la música (null = no hay timer programado). */
+  apagadoRestanteSeg: number | null
+  /** v0.13.0 — ¿la música se pausa al terminar ESTA canción? */
+  apagadoAlFinal: boolean
+  /** v0.13.0 — programa el timer de sueño: `minutos` (15/30/45…)
+   * o `alFinal` para pausar cuando termine la canción actual. */
+  programarApagado: (o: { minutos?: number; alFinal?: boolean }) => void
+  cancelarApagado: () => void
 }
 
 const Ctx = createContext<CtxReproductor | null>(null)
@@ -84,6 +93,11 @@ export function ReproductorProvider({ children }: { children: ReactNode }) {
   const [cargando, setCargando] = useState(false)
   const [posicionSeg, setPosicionSeg] = useState(0)
   const [duracionSeg, setDuracionSeg] = useState(0)
+  // ⏱ v0.13.0 — timer de sueño (pausa la música mientras dormís)
+  const [apagadoRestanteSeg, setApagadoRestanteSeg] = useState<number | null>(null)
+  const [apagadoAlFinal, setApagadoAlFinal] = useState(false)
+  const apagadoFinRef = useRef<number | null>(null)
+  const apagadoAlFinalRef = useRef(false)
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const actualRef = useRef<Cancion | null>(null)
@@ -134,6 +148,9 @@ export function ReproductorProvider({ children }: { children: ReactNode }) {
     setCargando(true)
     setPosicionSeg(0)
     setDuracionSeg(actual.duracionSeg ?? 0)
+    // 📊 v0.13.0 — cada vez que una canción CARGA en el reproductor
+    // suma una reproducción (las estadísticas del Inicio comen de acá)
+    registrarReproduccion(idCancion)
     void (async () => {
       const src = await resolverSrc(actual)
       if (!vivo) return
@@ -175,6 +192,16 @@ export function ReproductorProvider({ children }: { children: ReactNode }) {
     }
     const alDuracion = () => setDuracionSeg(Number.isFinite(audio.duration) ? audio.duration : 0)
     const alTerminar = () => {
+      // ⏱ v0.13.0 — timer «al final de la canción»: se pausa acá,
+      // no pasa a la siguiente
+      if (apagadoAlFinalRef.current) {
+        apagadoAlFinalRef.current = false
+        setApagadoAlFinal(false)
+        const audio = audioRef.current
+        if (audio) audio.pause()
+        mostrar('⏱ Timer de sueño: la música quedó en pausa — que descanses 💤', 'info', 5000)
+        return
+      }
       // 🔁 v0.11.0 — repetir UNA: la misma otra vez; si no, la que sigue
       const audio = audioRef.current
       if (repetirRef.current === 'una' && audio) {
@@ -329,6 +356,57 @@ export function ReproductorProvider({ children }: { children: ReactNode }) {
   const abrirVista = useCallback(() => setVistaCompleta(true), [])
   const cerrarVista = useCallback(() => setVistaCompleta(false), [])
 
+  // ── v0.13.0 — ⏱ timer de sueño ────────────────────────────────
+  const programarApagado = useCallback((o: { minutos?: number; alFinal?: boolean }) => {
+    if (o.alFinal) {
+      apagadoFinRef.current = null
+      apagadoAlFinalRef.current = true
+      setApagadoAlFinal(true)
+      setApagadoRestanteSeg(null)
+      return
+    }
+    const min = Math.max(1, Math.round(o.minutos ?? 30))
+    apagadoFinRef.current = Date.now() + min * 60_000
+    apagadoAlFinalRef.current = false
+    setApagadoAlFinal(false)
+    setApagadoRestanteSeg(min * 60)
+  }, [])
+
+  const cancelarApagado = useCallback(() => {
+    apagadoFinRef.current = null
+    apagadoAlFinalRef.current = false
+    setApagadoAlFinal(false)
+    setApagadoRestanteSeg(null)
+  }, [])
+
+  useEffect(() => {
+    if (apagadoRestanteSeg === null) return
+    const t = window.setInterval(() => {
+      const fin = apagadoFinRef.current
+      if (fin === null) {
+        setApagadoRestanteSeg(null)
+        return
+      }
+      const restante = Math.ceil((fin - Date.now()) / 1000)
+      if (restante <= 0) {
+        apagadoFinRef.current = null
+        setApagadoRestanteSeg(null)
+        const audio = audioRef.current
+        if (audio) audio.pause()
+        mostrar('⏱ Se acabó el tiempo: la música quedó en pausa 💤', 'info', 5000)
+      } else {
+        setApagadoRestanteSeg(restante)
+      }
+    }, 1000)
+    return () => window.clearInterval(t)
+  }, [apagadoRestanteSeg === null, mostrar])
+
+  /** 📊 v0.13.0 — suma una reproducción a la canción que carga. */
+  function registrarReproduccion(id: string) {
+    const c = leer<Cancion[]>('canciones', []).find((x) => x.id === id)
+    if (c) actualizarCancion(id, { reproducciones: (c.reproducciones ?? 0) + 1 })
+  }
+
   // ── refs a los controles (para los handlers de mediaSession
   //    y el evento ended, que se registran una sola vez) ──────
   const accionesRef = useRef({ alternar, siguiente, anterior, buscarSeg })
@@ -344,7 +422,7 @@ export function ReproductorProvider({ children }: { children: ReactNode }) {
         title: actual.titulo,
         artist: 'MusicTrack',
         album: actual.estilo || 'Biblioteca',
-        artwork: actual.urlPortada ? [{ src: actual.urlPortada, sizes: '512x512' }] : [],
+        artwork: portadaDe(actual) ? [{ src: portadaDe(actual)!, sizes: '512x512' }] : [],
       })
     } else {
       navigator.mediaSession.metadata = null
@@ -424,6 +502,8 @@ export function ReproductorProvider({ children }: { children: ReactNode }) {
       cargando,
       posicionSeg,
       duracionSeg,
+      apagadoRestanteSeg,
+      apagadoAlFinal,
       reproducir,
       alternar,
       siguiente,
@@ -434,8 +514,10 @@ export function ReproductorProvider({ children }: { children: ReactNode }) {
       cerrar,
       abrirVista,
       cerrarVista,
+      programarApagado,
+      cancelarApagado,
     }),
-    [actual, cola, sonando, aleatorio, repetir, etiquetaCola, vistaCompleta, cargando, posicionSeg, duracionSeg, reproducir, alternar, siguiente, anterior, alternarAleatorio, alternarRepetir, buscarSeg, cerrar, abrirVista, cerrarVista],
+    [actual, cola, sonando, aleatorio, repetir, etiquetaCola, vistaCompleta, cargando, posicionSeg, duracionSeg, apagadoRestanteSeg, apagadoAlFinal, reproducir, alternar, siguiente, anterior, alternarAleatorio, alternarRepetir, buscarSeg, cerrar, abrirVista, cerrarVista, programarApagado, cancelarApagado],
   )
 
   return (

@@ -2,9 +2,28 @@
 // 🧱 TrackStack — tipos compartidos de toda la app
 // ═══════════════════════════════════════════════════════════
 
-export type Tema = 'oscuro' | 'claro' | 'auto'
+/** v0.13.0 — 'amoled' resuelve a oscuro + clase extra en <html>
+ * que pinta los fondos de negro PURO (ahorra batería en pantallas
+ * OLED y se ve más premium, tipo Spotify). */
+export type Tema = 'oscuro' | 'claro' | 'auto' | 'amoled'
 
-export type PestannaId = 'inicio' | 'letras' | 'crear' | 'musica' | 'biblioteca' | 'ajustes'
+/** v0.13.0 — 🎨 color de acento de toda la app (la variable
+ * --ts-acento). Se elige en Ajustes → Apariencia. */
+export const ACENTOS: Array<{ id: string; etiqueta: string; color: string }> = [
+  { id: 'violeta', etiqueta: 'Violeta', color: '#a855f7' },
+  { id: 'esmeralda', etiqueta: 'Esmeralda', color: '#10b981' },
+  { id: 'cielo', etiqueta: 'Cielo', color: '#0ea5e9' },
+  { id: 'ambar', etiqueta: 'Ámbar', color: '#f59e0b' },
+  { id: 'rosa', etiqueta: 'Rosa', color: '#ec4899' },
+  { id: 'rojo', etiqueta: 'Rojo', color: '#ef4444' },
+]
+
+/** El acento guardado (id) o el violeta de siempre. */
+export function acentoPorId(id: string | undefined): string {
+  return ACENTOS.find((a) => a.id === id)?.color ?? ACENTOS[0].color
+}
+
+export type PestannaId = 'inicio' | 'letras' | 'crear' | 'musica' | 'reproductor' | 'biblioteca' | 'ajustes'
 
 export interface Ajustes {
   tokenIA: string
@@ -75,6 +94,7 @@ export const GENEROS_MUSICALES = [
   'Reggaetón',
   'Trap latino',
   'Cumbia',
+  'Cumbia peruana',
   'Salsa',
   'Vallenato',
   'Bachata',
@@ -204,6 +224,12 @@ export const ESTILOS_RAPIDOS = [
   'trap latino, oscuro, 808 profundo',
   'balada romántica, piano, cuerdas',
   'cumbia peruana, guitarra, timbales',
+  // 🇵🇪 v0.13.0 — cumbia peruana en sus tres sabores: la orquesta
+  // clásica (Grupo 5 / Agua Marina), la juvenil (Corazón Serrano)
+  // y la chicha amazónica que ya estaba
+  'cumbia peruana romántica, orquesta, trompetas, saxo, tumbadoras',
+  'tecno-cumbia peruana, juvenil, sintetizadores, guiro',
+  'cumbia colombiana, acordeón, alegre, tambores',
   'salsa dura, trompetas, tumbao',
   'pop latino, pegadizo, verano',
   'rock en español, guitarras distorsionadas',
@@ -229,6 +255,9 @@ export const ESTILOS_RAPIDOS = [
   'samba batucada, carnaval, percusión brasileña',
   'bolero, romántico, trío, años 50',
   'chicha peruana, guitarra psicodélica, cumbia amazónica',
+  // 🎤 v0.13.0 — solo voces
+  'a capella, coros vocales, beatbox, sin instrumentos',
+  'gospel, coros grandes, órgano, esperanzador',
 ] as const
 
 /** Etiquetas de UN género para COMBINAR estilos (v0.6.0): tocás
@@ -246,6 +275,10 @@ export const GRUPOS_TAGS_ESTILO: { titulo: string; tags: string[] }[] = [
       'Rap',
       'R&B',
       'Cumbia',
+      'Cumbia peruana',
+      'Tecno-cumbia',
+      'Cumbia colombiana',
+      'Chicha',
       'Salsa',
       'Merengue',
       'Bachata',
@@ -470,7 +503,7 @@ export const GRUPOS_INSTRUMENTOS_ESTILO: { titulo: string; tags: string[] }[] = 
   {
     // 🧑‍🤝‍🧑 el «coro» del usuario: personas cantando detrás del solista
     titulo: 'Coros y voces',
-    tags: ['Coros', 'Coro épico', 'Coro femenino', 'Coro masculino', 'Coro gregoriano', 'Coros gospel'],
+    tags: ['Coros', 'Coro épico', 'Coro femenino', 'Coro masculino', 'Coro gregoriano', 'Coros gospel', 'A capella'],
   },
   {
     titulo: 'Medieval y del mundo',
@@ -633,6 +666,13 @@ export const DICCIONARIO_ARTISTAS: Record<string, string> = {
   'silvestre dangond': 'vallenato nuevo, fiesta',
   'los mirlos': 'cumbia amazónica, guitarras psicodélicas',
   'sonora dinamita': 'cumbia tropical clásica, fiesta',
+  // 🇵🇪 v0.13.0 — la cumbia peruana pedida: las grandes orquestas
+  'grupo 5': 'cumbia peruana, orquesta, trompetas brillantes, guaracha',
+  'agua marina': 'cumbia peruana romántica, orquesta, saxo y trompetas',
+  'corazon serrano': 'tecno-cumbia peruana juvenil, voces femeninas, fresca',
+  'hermanos yaipen': 'cumbia peruana moderna, orquesta potente, fiesta',
+  'armonia 10': 'cumbia peruana, orquesta, huayno con cumbia',
+  'agua bella': 'cumbia peruana femenina, orquesta, pegajosa',
   'juan luis guerra': 'bachata y merengue poéticos, elegantes',
   'elvis crespo': 'merengue rápido, güira y tambora, fiesta',
   'olga tañon': 'merengue femenino, potente',
@@ -698,7 +738,8 @@ export const ARTISTAS_REFERENCIA: Record<string, string[]> = {
   'Balada romántica': ['Luis Miguel', 'Juan Gabriel', 'José José', 'Marco Antonio Solís', 'Romeo Santos', 'Aimer'],
   Reggaetón: ['Bad Bunny', 'Daddy Yankee', 'J Balvin', 'Karol G', 'Don Omar', 'Ozuna'],
   'Trap latino': ['Ozuna', 'Anuel AA', 'Bad Bunny'],
-  Cumbia: ['Los Mirlos', 'Sonora Dinamita'],
+  Cumbia: ['Los Mirlos', 'Sonora Dinamita', 'Grupo 5', 'Agua Marina'],
+  'Cumbia peruana': ['Grupo 5', 'Agua Marina', 'Corazón Serrano', 'Hermanos Yaipén', 'Armonía 10', 'Agua Bella', 'Los Mirlos'],
   Salsa: ['Marc Anthony', 'Celia Cruz', 'Héctor Lavoe', 'Rubén Blades', 'Grupo Niche', 'Willie Colón', 'Frankie Ruiz', 'Jerry Rivera'],
   Vallenato: ['Carlos Vives', 'Diomedes Díaz', 'Silvestre Dangond'],
   Bachata: ['Aventura', 'Romeo Santos', 'Prince Royce'],
@@ -818,6 +859,10 @@ export interface Cancion {
    * enlace de Suno caduque, la canción sigue sonando y se puede
    * bajar. Las de Lyria no lo necesitan (audioLocal). */
   respaldada?: boolean
+  /** v0.13.0 — 📊 cuántas veces se escuchó (se suma cada vez que
+   * la canción carga en el reproductor). Alimenta las estadísticas
+   * del Inicio: tus más escuchadas. */
+  reproducciones?: number
   estado: 'generando' | 'lista' | 'error'
   /** Estado tal cual lo reporta sunoapi.org (PENDING, TEXT_SUCCESS,
    * FIRST_SUCCESS…) — alimenta la barrita de etapas de la v0.4.5. */
