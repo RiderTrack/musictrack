@@ -215,6 +215,20 @@ export const ESTILOS_RAPIDOS = [
   // 🇯🇵 v0.9.1 — las dos caras del anime: batalla y balada
   'j-rock anime, guitarras rápidas, enérgico, épico, 170 bpm',
   'balada anime, piano, emocional, cuerdas, voz femenina',
+  // 🌍 v0.12.0 — el pedido de «más estilos»: un viaje por el mundo
+  'city pop japonés, ochentero, funky, brillante',
+  'k-pop, pegadizo, producción brillante, EDM pop',
+  'ópera rock, épica, coros, guitarra y orquesta',
+  'folk metal medieval, gaitas, laúd, coros de taberna',
+  'metal sinfónico, orquesta, coros épicos, voz femenina operática',
+  'darksynth, oscuro, cinematográfico, bajo pulsante',
+  'phonk, memphis, distorsionado, cowbell',
+  'afrobeats, groove, percusión alegre',
+  'bossa nova, suave, guitarra y viento íntimo',
+  'tango, bandoneón, dramático, porteño',
+  'samba batucada, carnaval, percusión brasileña',
+  'bolero, romántico, trío, años 50',
+  'chicha peruana, guitarra psicodélica, cumbia amazónica',
 ] as const
 
 /** Etiquetas de UN género para COMBINAR estilos (v0.6.0): tocás
@@ -669,6 +683,11 @@ export const DICCIONARIO_ARTISTAS: Record<string, string> = {
   'elis regina': 'voz brasileña luminosa, swing',
   'carlos gardel': 'tango clásico, orquesta típica',
   'astor piazzolla': 'tango nuevo, bandoneón virtuoso',
+  // 🌍 v0.12.0 — más retratos para las nuevas inspiraciones
+  'rauw alejandro': 'reggaetón electrónico, futurista, pulido',
+  'feid': 'reggaetón neón, groove nocturno, pegadizo',
+  'luismi': 'balada romántica, voz de terciopelo, orquestal',
+  'mago de oz': 'folk metal español, violín céltico, historias fantásticas',
 }
 
 /** Sugerencias de artistas por género (los chips de Crear):
@@ -805,7 +824,18 @@ export interface Cancion {
   estadoCrudo?: string
   urlAudio?: string
   urlPortada?: string
+  /** v0.12.0 — 🖼️ portada PERSONALIZADA del usuario: JPEG cuadrado
+   * de hasta 512 px (dataUrl) elegido desde la galería. Tiene
+   * prioridad sobre la que devuelve Suno (urlPortada). */
+  portadaPersonal?: string
   duracionSeg?: number
   error?: string
   fecha: number
+}
+
+/** v0.12.0 — la portada que se debe MOSTRAR de una canción: la
+ * personal del usuario manda sobre la de Suno (que a veces caduca
+ * o directamente no vino). undefined = dibujar el disco 🎵. */
+export function portadaDe(c: Cancion): string | undefined {
+  return c.portadaPersonal ?? c.urlPortada
 }

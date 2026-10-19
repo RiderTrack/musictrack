@@ -10,7 +10,13 @@ import { useTema } from '@/core/theme/TemaProvider'
 import { useAuth } from '@/core/auth/useAuth'
 import { useToast } from '@/components/ui/Toast'
 import { Boton } from '@/components/ui/Boton'
-import { firebaseConfigurado } from '@/services/firebase'
+import {
+  borrarConfigFirebase,
+  firebaseConfigurado,
+  fuenteConfigFirebase,
+  guardarConfigFirebase,
+  parsearConfigFirebase,
+} from '@/services/firebase'
 import { plataformaActual, vibrar, abrirURL } from '@/core/natives/plataforma'
 import { buscarUltimaVersion, esMasNueva, type InfoActualizacion } from '@/core/actualizacion/actualizacion'
 import { AJUSTES_POR_DEFECTO, MODELOS_CLAUDE, MODELOS_LYRIA, MODELOS_SUNO, MODELOS_SUNO_VIEJOS, modeloClaudeConocido, type Ajustes, type Tema } from '@/types'
@@ -116,6 +122,30 @@ export function AjustesView() {
       setSincronizando(false)
     }
     evento.target.value = ''
+  }
+
+  // 🔐 v0.12.0 — activar Firebase pegando el firebaseConfig
+  const [firebasePegado, setFirebasePegado] = useState('')
+  function activarFirebase() {
+    const cfg = parsearConfigFirebase(firebasePegado)
+    if (!cfg) {
+      mostrar(
+        'No encontré apiKey y projectId — copiá el bloque firebaseConfig ENTERO de Firebase Console y pegalo acá',
+        'error',
+        5500,
+      )
+      return
+    }
+    guardarConfigFirebase(cfg)
+    vibrar('media')
+    mostrar('Firebase activo ✔ — recargando para conectar tu cuenta…', 'ok', 2000)
+    window.setTimeout(() => window.location.reload(), 1800)
+  }
+
+  function quitarFirebase() {
+    borrarConfigFirebase()
+    mostrar('Configuración quitada — recargando en modo local…', 'info', 1800)
+    window.setTimeout(() => window.location.reload(), 1600)
   }
 
   async function manejarSesion() {
@@ -442,6 +472,84 @@ export function AjustesView() {
         <input ref={inputArchivo} type="file" accept="application/json,.json" className="hidden" onChange={importar} />
       </section>
 
+      {/* ── Cuenta Google / Firebase (v0.12.0) ──────── */}
+      <section className="rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+        <h2 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-neutral-400">
+          <LogIn className="h-4 w-4" /> Cuenta Google (Firebase)
+        </h2>
+        {firebaseConfigurado ? (
+          <div className="space-y-2">
+            <p className="text-sm text-emerald-600 dark:text-emerald-400">
+              ✅ Firebase activo — ingreso con Google y respaldo en la nube habilitados.
+            </p>
+            <p className="text-xs text-neutral-400">
+              Configurado {fuenteConfigFirebase() === 'ajustes' ? 'desde acá (Ajustes)' : 'en el código de la app'}.
+            </p>
+            {fuenteConfigFirebase() === 'ajustes' && (
+              <Boton variante="fantasma" icono={<LogOut className="h-4 w-4" />} onClick={quitarFirebase}>
+                Quitar la configuración (volver a modo local)
+              </Boton>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">
+              Ingresá con tu cuenta Google y respaldá todo en la nube. Se configura UNA sola vez, gratis (~5 minutos).
+            </p>
+            <details className="rounded-xl border border-neutral-200 p-3 text-sm dark:border-neutral-800">
+              <summary className="cursor-pointer select-none font-bold text-neutral-600 dark:text-neutral-300">
+                📋 Guía paso a paso
+              </summary>
+              <ol className="mt-2 list-decimal space-y-2 pl-4 text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
+                <li>
+                  Entrá a <b>console.firebase.google.com</b> con tu cuenta Google y creá un proyecto nuevo
+                  (nombre: <code className="rounded bg-neutral-100 px-1 dark:bg-neutral-800">musictrack</code>, plan gratis).
+                </li>
+                <li>
+                  Menú <b>Build → Authentication → Comenzar</b> → elegí <b>Google</b> → <b>Habilitar</b> (poné tu email de
+                  soporte) → Guardar.
+                </li>
+                <li>
+                  En <b>Authentication → Settings → Dominios autorizados</b> → agregá{' '}
+                  <code className="rounded bg-neutral-100 px-1 dark:bg-neutral-800">ridertrack.github.io</code> (para la
+                  versión web).
+                </li>
+                <li>
+                  Menú <b>Build → Firestore Database</b> → <b>Crear base de datos</b> → modo producción → la región que
+                  quieras → Crear.
+                </li>
+                <li>
+                  <b>⚙️ Configuración del proyecto</b> → abajo en «Tus apps» tocá el ícono{' '}
+                  <b>&lt;/&gt;</b> (web) → registrala sin hosting → te muestra el bloque{' '}
+                  <code className="rounded bg-neutral-100 px-1 dark:bg-neutral-800">firebaseConfig</code> → copialo ENTERO.
+                </li>
+                <li>Pegalo abajo y tocá «Activar». Listo — ingresás con tu cuenta desde Sesión.</li>
+              </ol>
+              <p className="mt-2 text-[11px] text-neutral-400">
+                Para el APK, además: guardá el archivo google-services.json en el secret GOOGLE_SERVICES_JSON de GitHub y
+                la CI lo inyecta sola (README, sección Firebase).
+              </p>
+            </details>
+            <label className="block">
+              <span className="mb-1 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+                Pegá acá el bloque firebaseConfig completo
+              </span>
+              <textarea
+                value={firebasePegado}
+                onChange={(e) => setFirebasePegado(e.target.value)}
+                rows={5}
+                spellCheck={false}
+                placeholder={'const firebaseConfig = {\n  apiKey: "AIza…",\n  authDomain: "tu-proyecto.firebaseapp.com",\n  projectId: "tu-proyecto",\n  …\n}'}
+                className="min-h-[110px] w-full resize-y rounded-xl border border-neutral-300 bg-transparent p-3 font-mono text-xs outline-none transition-colors focus:border-acento dark:border-neutral-700"
+              />
+            </label>
+            <Boton className="w-full" icono={<LogIn className="h-4 w-4" />} onClick={activarFirebase}>
+              Activar — guardar y conectar
+            </Boton>
+          </div>
+        )}
+      </section>
+
       {/* ── Nube ───────────────────────────────────────── */}
       <section className="rounded-2xl border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
         <h2 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-neutral-400">
@@ -449,7 +557,7 @@ export function AjustesView() {
         </h2>
         {!firebaseConfigurado ? (
           <p className="text-sm text-neutral-500 dark:text-neutral-400">
-            Firebase sin configurar — completá las claves en <code className="rounded bg-neutral-100 px-1 dark:bg-neutral-800">src/services/firebase.ts</code> para activar respaldo en la nube (la app funciona igual en modo local).
+            Activá Firebase en la sección «Cuenta Google» de arriba para respaldar en la nube (la app funciona igual en modo local).
           </p>
         ) : !sesion ? (
           <p className="text-sm text-neutral-500 dark:text-neutral-400">Iniciá sesión para respaldar tus datos en la nube.</p>
@@ -493,7 +601,7 @@ export function AjustesView() {
             Ingresar con Google
           </Boton>
         ) : (
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">Sin Firebase configurado no hay cuentas — modo 100% local.</p>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400">Sin Firebase activo no hay cuentas — modo 100% local (activálo en «Cuenta Google» de arriba).</p>
         )}
       </section>
 

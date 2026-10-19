@@ -1,6 +1,7 @@
 import { Disc3, Pause, Play, Shuffle, SkipBack, SkipForward, X } from 'lucide-react'
 import { useReproductor } from '@/core/audio/reproductor'
 import { vibrar } from '@/core/natives/plataforma'
+import { portadaDe } from '@/types'
 
 // ═══════════════════════════════════════════════════════════
 // 🎛️ MINI-REPRODUCTOR (v0.10.0) — la barra fija de abajo, como
@@ -66,9 +67,9 @@ export function MiniReproductor() {
             aria-label="Abrir el reproductor completo"
             className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
           >
-            {r.actual.urlPortada ? (
+            {portadaDe(r.actual) ? (
               <img
-                src={r.actual.urlPortada}
+                src={portadaDe(r.actual)}
                 alt=""
                 referrerPolicy="no-referrer"
                 className={`h-10 w-10 shrink-0 rounded-lg object-cover ${r.sonando ? 'animate-[girar_6s_linear_infinite]' : ''}`}

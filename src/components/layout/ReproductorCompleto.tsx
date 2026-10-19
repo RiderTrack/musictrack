@@ -24,7 +24,7 @@ import { leer, leerAjustes, guardar } from '@/core/storage/almacenamiento'
 import { vibrar } from '@/core/natives/plataforma'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Toast'
-import type { Cancion, Letra } from '@/types'
+import { portadaDe, type Cancion, type Letra } from '@/types'
 
 // ═══════════════════════════════════════════════════════════
 // 📱 REPRODUCTOR A PANTALLA COMPLETA (v0.11.0) — el «now
@@ -392,9 +392,9 @@ export function ReproductorCompleto() {
 
         {/* portada */}
         <div className="relative flex min-h-0 flex-1 items-center justify-center px-8 py-3">
-          {c.urlPortada ? (
+          {portadaDe(c) ? (
             <img
-              src={c.urlPortada}
+              src={portadaDe(c)}
               alt={`Portada de ${c.titulo}`}
               referrerPolicy="no-referrer"
               className="aspect-square h-full max-h-[300px] w-auto max-w-full rounded-2xl object-cover shadow-2xl shadow-black/60 ring-1 ring-white/10"

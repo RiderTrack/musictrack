@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Disc3, Gift, PenLine, RefreshCw, Save, Share2, Sparkles, Wand2 } from 'lucide-react'
+import { Disc3, FileDown, Gift, PenLine, RefreshCw, Save, Share2, Sparkles, Wand2 } from 'lucide-react'
 import { leerAjustes, leer, guardar } from '@/core/storage/almacenamiento'
 import { preguntarIA } from '@/core/ai/claude'
+import { descargarLetraPdf } from '@/core/exportar/pdfLetra'
 import { Boton } from '@/components/ui/Boton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { CuerpoLetra } from '@/components/ui/CuerpoLetra'
@@ -245,6 +246,27 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
       'info',
       5000,
     )
+  }
+
+  /** v0.12.0 — PDF BONITO de la letra recién creada (o la propia):
+   * tipografía de libro, título en negrita, secciones en cursiva
+   * negrita y aire entre estrofas. */
+  async function bajarPdf() {
+    if (!letra) return
+    vibrar()
+    const res = await descargarLetraPdf(
+      {
+        titulo: letra.titulo,
+        meta: [letra.genero, letra.mood, letra.voz ? `voz ${letra.voz.toLowerCase()}` : '', letra.idioma].filter(
+          Boolean,
+        ),
+        texto: letra.texto,
+        origen: `Creación · ${new Date(letra.fecha).toLocaleDateString('es-PE')}`,
+      },
+      'Letras de Rudy',
+    )
+    if (res.ok) mostrar(`PDF guardado en ${res.ruta} 📄`, 'ok', 5000)
+    else mostrar(`No pude guardar el PDF — ${res.error}`, 'error', 4500)
   }
 
   const claseInput =
@@ -599,6 +621,9 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
           </Boton>
           <Boton variante="fantasma" className="mt-2 w-full" icono={<Share2 className="h-4 w-4" />} onClick={compartirLetra}>
             Compartir
+          </Boton>
+          <Boton variante="fantasma" className="mt-2 w-full" icono={<FileDown className="h-4 w-4" />} onClick={() => void bajarPdf()}>
+            📄 Descargar PDF bonito (tipografía de libro)
           </Boton>
         </section>
       )}

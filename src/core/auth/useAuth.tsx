@@ -49,7 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function loginGoogle(): Promise<void> {
     if (!firebaseConfigurado) {
-      throw new Error('Firebase sin configurar — completá src/services/firebase.ts')
+      throw new Error('Firebase sin configurar — completalo en Ajustes → Cuenta Google (Firebase)')
     }
     if (esNativo()) {
       const resultado = await GoogleAuth.signIn()

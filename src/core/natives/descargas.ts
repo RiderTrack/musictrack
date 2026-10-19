@@ -30,6 +30,12 @@ export function nombreMp3(titulo: string, version?: string): string {
   return `${nombreBaseArchivo(titulo, version)}.mp3`
 }
 
+/** v0.12.0 — nombre del PDF de la letra (misma base que el MP3
+ * y el .lrc, para que se reconozcan como la misma canción). */
+export function nombrePdf(titulo: string, version?: string): string {
+  return `${nombreBaseArchivo(titulo, version)}.pdf`
+}
+
 /** v0.9.0 — nombre del .lrc (letra sincronizada): IGUAL base que
  * el MP3 para que el reproductor los empareje solo (Musicolet,
  * Poweramp y casi todos buscan "canción.lrc" al lado de
@@ -76,6 +82,17 @@ export interface ResultadoDescarga {
  * No lanza excepciones: devolvé ResultadoDescarga y mostralo.
  */
 export async function guardarMp3EnDescargas(blob: Blob, nombre: string, carpeta: string): Promise<ResultadoDescarga> {
+  return guardarArchivoEnDescargas(blob, nombre, carpeta)
+}
+
+/** v0.12.0 — guarda CUALQUIER archivo (MP3, PDF, lo que sea) en
+ * la carpeta de descargas de siempre. Es el mismo mecanismo del
+ * MP3, con nombre genérico: el PDF de la letra lo usa tal cual. */
+export async function guardarArchivoEnDescargas(
+  blob: Blob,
+  nombre: string,
+  carpeta: string,
+): Promise<ResultadoDescarga> {
   const carpetaLimpia = sanearCarpeta(carpeta)
   try {
     if (esNativo()) {

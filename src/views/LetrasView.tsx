@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { ListMusic, Gift, PenLine, Save, Share2, Trash2, Wand2 } from 'lucide-react'
+import { ListMusic, Gift, FileDown, PenLine, Save, Share2, Trash2, Wand2 } from 'lucide-react'
 import { leer, guardar } from '@/core/storage/almacenamiento'
+import { descargarLetraPdf } from '@/core/exportar/pdfLetra'
 import { Boton } from '@/components/ui/Boton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Modal } from '@/components/ui/Modal'
@@ -73,6 +74,24 @@ export function LetrasView({ irA }: { irA: (p: PestannaId) => void }) {
   async function compartirLetra(l: Letra) {
     const ok = await compartir({ titulo: l.titulo, texto: `${l.titulo}\n\n${l.texto}` })
     if (!ok) mostrar('Compartir no disponible en esta plataforma', 'info')
+  }
+
+  /** v0.12.0 — PDF BONITO de la letra: título en negrita, chips de
+   * contexto en cursiva, secciones resaltadas, aire entre
+   * estrofas y pie de página — tipografía de libro de canciones. */
+  async function bajarPdfLetra(l: Letra) {
+    vibrar()
+    const res = await descargarLetraPdf(
+      {
+        titulo: l.titulo,
+        meta: [l.genero, l.mood, l.voz ? `voz ${l.voz.toLowerCase()}` : '', l.idioma].filter(Boolean),
+        texto: l.texto,
+        origen: `Letras · ${new Date(l.fecha).toLocaleDateString('es-PE')}`,
+      },
+      'Letras de Rudy',
+    )
+    if (res.ok) mostrar(`PDF guardado en ${res.ruta} 📄`, 'ok', 5000)
+    else mostrar(`No pude guardar el PDF — ${res.error}`, 'error', 4500)
   }
 
   /** Vía gratis (cuenta Google de suno.com, 50 créditos diarios): copia la
@@ -213,12 +232,15 @@ export function LetrasView({ irA }: { irA: (p: PestannaId) => void }) {
             <p className="text-[10px] uppercase tracking-wide text-neutral-400">
               Tema: {abierta.tema || '—'} · {new Date(abierta.fecha).toLocaleString('es-PE')}
             </p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <Boton variante="secundario" icono={<PenLine className="h-4 w-4" />} onClick={() => empezarEditar(abierta)}>
                 Editar
               </Boton>
               <Boton variante="secundario" icono={<Share2 className="h-4 w-4" />} onClick={() => compartirLetra(abierta)}>
                 Compartir
+              </Boton>
+              <Boton variante="secundario" icono={<FileDown className="h-4 w-4" />} onClick={() => void bajarPdfLetra(abierta)}>
+                PDF
               </Boton>
             </div>
             <Boton

@@ -3,8 +3,10 @@ import {
   Disc3,
   Download,
   FastForward,
+  FileDown,
   HardDriveDownload,
   Heart,
+  ImagePlus,
   Link2,
   ListMusic,
   ListPlus,
@@ -19,6 +21,7 @@ import {
   Share2,
   Skull,
   Trash2,
+  X,
 } from 'lucide-react'
 import { leerAjustes, leer } from '@/core/storage/almacenamiento'
 import { leerAudio, borrarAudio } from '@/core/storage/audio'
@@ -27,6 +30,9 @@ import { alternarEnLista, borrarLista, crearLista, EVENTO_LISTAS, leerListas, ty
 import { necesitaRespaldo, respaldarCancion, respaldarPendientes } from '@/core/storage/respaldo'
 import { useReproductor } from '@/core/audio/reproductor'
 import { guardarMp3EnDescargas, guardarTextoEnDescargas, nombreMp3, nombreLrc, type ResultadoDescarga } from '@/core/natives/descargas'
+import { descargarLetraPdf } from '@/core/exportar/pdfLetra'
+import { recortarYReducir } from '@/core/imagenes/imagen'
+import { tomarFoto } from '@/core/natives/plataforma'
 import {
   consultarLetraConTiempos,
   consultarPistas,
@@ -47,6 +53,7 @@ import {
   GENEROS_MUSICALES,
   GRUPOS_TAGS_ESTILO,
   modeloSunoBonito,
+  portadaDe,
   type Cancion,
   type Letra,
   type PestannaId,
@@ -465,10 +472,13 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
     }
 
     // 3) portada (best effort — si el CDN no deja, el MP3 sigue)
+    // v0.12.0 — la portada PERSONALIZADA del usuario manda sobre
+    // la de Suno (y como es dataUrl, el fetch es local e infalible).
     let portada: Blob | undefined
-    if (c.urlPortada) {
+    const fuentePortada = c.portadaPersonal ?? c.urlPortada
+    if (fuentePortada) {
       try {
-        const r = await fetch(c.urlPortada)
+        const r = await fetch(fuentePortada)
         if (r.ok) portada = await r.blob()
       } catch {
         /* sin portada */
@@ -803,6 +813,55 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
     setRenombrando(null)
   }
 
+  // 🖼️ v0.12.0 — PORTADA PERSONALIZADA: elegir una foto de la
+  // galería, recortarla a cuadrado centrado, achicarla a 512 px
+  // y guardarla con la canción — se ve en la tarjeta, el
+  // reproductor completo, la mini-barra… y viaja adentro del MP3
+  // al descargarlo (con prioridad sobre la de Suno).
+  const [portadaCargandoId, setPortadaCargandoId] = useState<string | null>(null)
+  async function cambiarPortada(c: Cancion) {
+    if (portadaCargandoId) return
+    vibrar()
+    setPortadaCargandoId(c.id)
+    try {
+      const foto = await tomarFoto(85)
+      if (!foto) return // canceló el diálogo
+      const reducida = await recortarYReducir(foto, 512, 0.85)
+      if (!reducida) {
+        mostrar('No pude procesar esa imagen — probá con otra', 'error', 4000)
+        return
+      }
+      actualizarCancion(c.id, { portadaPersonal: reducida })
+      mostrar('Portada actualizada 🖼️ — se ve en toda la app y viaja en el MP3', 'ok', 4500)
+    } finally {
+      setPortadaCargandoId(null)
+    }
+  }
+
+  function quitarPortada(c: Cancion) {
+    actualizarCancion(c.id, { portadaPersonal: undefined })
+    vibrar()
+    mostrar('Portada tuya quitada — vuelve la de Suno', 'info')
+  }
+
+  /** v0.12.0 — PDF bonito de la letra de ESTA canción. */
+  async function bajarPdfCancion(c: Cancion) {
+    const letra = letraDe(c)
+    if (!letra) return
+    vibrar()
+    const res = await descargarLetraPdf(
+      {
+        titulo: c.titulo,
+        meta: [c.estilo, c.instrumental ? 'instrumental' : ''].filter(Boolean),
+        texto: letra,
+        origen: `Biblioteca · ${new Date(c.fecha).toLocaleDateString('es-PE')}`,
+      },
+      ajustes.carpetaDescargas,
+    )
+    if (res.ok) mostrar(`PDF guardado en ${res.ruta} 📄`, 'ok', 5000)
+    else mostrar(`No pude guardar el PDF — ${res.error}`, 'error', 4500)
+  }
+
   /** v0.9.1 — la TARJETA de una canción (antes era el map directo
    * de la lista): ahora se dibuja en «En curso» y adentro de cada
    * CARPETA de estilo. Novedad: el título se puede EDITAR (✏️). */
@@ -820,17 +879,46 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
                 }`}
               >
                 <div className="flex items-start gap-3">
-                  {c.urlPortada ? (
-                    <img src={c.urlPortada} alt="" className="h-14 w-14 shrink-0 rounded-xl object-cover" referrerPolicy="no-referrer" />
-                  ) : (
-                    <span
-                      className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-xl ${
-                        muerta ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : 'bg-acento/10 text-acento'
-                      }`}
-                    >
-                      <Disc3 className={`h-6 w-6 ${c.estado === 'generando' && !muerta ? 'animate-spin' : ''}`} />
-                    </span>
-                  )}
+                  <div className="relative shrink-0">
+                    {portadaDe(c) ? (
+                      <img src={portadaDe(c)} alt="" className="h-14 w-14 rounded-xl object-cover" referrerPolicy="no-referrer" />
+                    ) : (
+                      <span
+                        className={`flex h-14 w-14 items-center justify-center rounded-xl ${
+                          muerta ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400' : 'bg-acento/10 text-acento'
+                        }`}
+                      >
+                        <Disc3 className={`h-6 w-6 ${c.estado === 'generando' && !muerta ? 'animate-spin' : ''}`} />
+                      </span>
+                    )}
+                    {/* 🖼️ v0.12.0 — TU propia portada: galería → cuadrado
+                        512 px → guardada con la canción (toca la cámara) */}
+                    {c.estado === 'lista' && (
+                      <button
+                        type="button"
+                        onClick={() => void cambiarPortada(c)}
+                        disabled={portadaCargandoId !== null}
+                        title="Poner TU portada (foto de la galería)"
+                        aria-label="Poner tu propia portada"
+                        className={`absolute -bottom-1.5 -right-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-white shadow-lg transition-colors hover:bg-black disabled:opacity-50 ${
+                          portadaCargandoId === c.id ? 'animate-pulse' : ''
+                        }`}
+                      >
+                        <ImagePlus className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    {c.portadaPersonal && (
+                      <button
+                        type="button"
+                        onClick={() => quitarPortada(c)}
+                        title="Quitar tu portada (vuelve la de Suno)"
+                        aria-label="Quitar la portada personalizada"
+                        className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white transition-colors hover:bg-black"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex min-w-0 items-center gap-1">
@@ -1099,6 +1187,16 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
                     <pre className="mt-1.5 max-h-56 overflow-y-auto whitespace-pre-wrap rounded-xl bg-neutral-50 p-3 font-sans text-xs leading-relaxed text-neutral-600 dark:bg-neutral-950 dark:text-neutral-300">
                       {letraDe(c)}
                     </pre>
+                    {/* 📄 v0.12.0 — la letra en PDF bonito, junto al MP3 */}
+                    <div className="mt-1.5 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => void bajarPdfCancion(c)}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-neutral-400 transition-colors hover:text-acento"
+                      >
+                        <FileDown className="h-3 w-3" /> Descargar en PDF bonito
+                      </button>
+                    </div>
                   </details>
                 )}
 

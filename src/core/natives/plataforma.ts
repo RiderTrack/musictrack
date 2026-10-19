@@ -43,8 +43,41 @@ export async function compartir(datos: { titulo?: string; texto?: string; url?: 
   }
 }
 
-/** Abre la cámara/galería y devuelve la foto como dataUrl (null si canceló). */
+/** WEB: el selector de archivos del navegador como «galería» —
+ * el plugin de Capacitor Camera necesita pwa-elements que acá no
+ * cargamos, así que en web se elige la foto así (v0.12.0). */
+function elegirImagenWeb(): Promise<string | null> {
+  return new Promise((resolver) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    input.style.position = 'fixed'
+    input.style.opacity = '0'
+    input.onchange = () => {
+      const archivo = input.files?.[0]
+      input.remove()
+      if (!archivo) {
+        resolver(null)
+        return
+      }
+      const lector = new FileReader()
+      lector.onload = () => resolver(typeof lector.result === 'string' ? lector.result : null)
+      lector.onerror = () => resolver(null)
+      lector.readAsDataURL(archivo)
+    }
+    input.oncancel = () => {
+      input.remove()
+      resolver(null)
+    }
+    document.body.appendChild(input)
+    input.click()
+  })
+}
+
+/** Abre la cámara/galería y devuelve la foto como dataUrl (null si canceló).
+ * En web usa el selector de archivos del navegador (v0.12.0). */
 export async function tomarFoto(calidad = 80): Promise<string | null> {
+  if (!esNativo()) return elegirImagenWeb()
   try {
     const foto = await Camera.getPhoto({
       quality: calidad,
