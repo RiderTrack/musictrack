@@ -175,7 +175,7 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
                 : '',
               voz === 'Cualquiera' ? '' : `Voz del intérprete: ${voz.toLowerCase()} — escribí la letra pensando en esa voz`,
               voz === 'Dúo'
-                ? 'Es un DUETO: alterná secciones entre voz masculina y femenina, etiquetándolas [Voz hombre] o [Voz mujer] al inicio de cada sección'
+                ? 'Es un DUETO: alterná secciones entre voz masculina y femenina, etiquetando CADA sección (versos, coros y puente) con [Voz hombre] o [Voz mujer] al inicio — ninguna sección sin su etiqueta'
                 : '',
               `Estructura: ${est?.detalle ?? 'estructura estándar'}`,
               '',
@@ -472,7 +472,7 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
             </div>
             {voz === 'Dúo' && (
               <p className="mt-1 text-[10px] text-neutral-400">
-                El dueto se escribe con secciones [Voz hombre] / [Voz mujer] — Suno las respeta al cantar
+                El dueto se escribe con [Voz hombre] / [Voz mujer] en cada sección — al musicalizar, Suno las recibe ya traducidas a su idioma para alternar bien las voces
               </p>
             )}
           </div>

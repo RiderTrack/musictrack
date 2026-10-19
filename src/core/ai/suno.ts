@@ -270,6 +270,51 @@ export function estiloParaSuno(estilo: string): string {
   return e
 }
 
+/** v0.11.3 — METATAGS de la letra en español → inglés canónico.
+ *
+ * LA PIEZA QUE FALTABA DEL DÚO (v0.11.2 arregló el estilo; esto
+ * arregla la LETRA): para que Suno alterne hombre y mujer en un
+ * dueto, lo que manda son las ETIQUETAS DE SECCIÓN dentro de la
+ * letra. Claude las escribe en español ([Voz hombre], [Coro]…)
+ * porque la letra es para Rudy — pero Suno solo OBEDECE las
+ * canónicas en inglés ([Male Vocals], [Chorus]…): las nuestras
+ * las interpreta a medias y por eso las voces se mezclaban.
+ *
+ * Mismo patrón que estiloParaSuno: traducción SOLO en la frontera
+ * de la API. Lo que se ve, se guarda y se comparte queda español.
+ * Lo que ya viene en inglés no se toca. */
+const TRADUCCIONES_TAG: ReadonlyArray<readonly [RegExp, string]> = [
+  // ── voces (el corazón del dúo) — primero los patrones largos ──
+  [/\[\s*voz\s+hombre\s+y\s+mujer\s*\]/gi, '[Duet]'],
+  [/\[\s*voz\s+mujer\s+y\s+hombre\s*\]/gi, '[Duet]'],
+  [/\[\s*voz\s+de\s+hombre\s*\]/gi, '[Male Vocals]'],
+  [/\[\s*voz\s+de\s+mujer\s*\]/gi, '[Female Vocals]'],
+  [/\[\s*voz\s+masculina\s*\]/gi, '[Male Vocals]'],
+  [/\[\s*voz\s+femenina\s*\]/gi, '[Female Vocals]'],
+  [/\[\s*voz\s+hombre\s*\]/gi, '[Male Vocals]'],
+  [/\[\s*voz\s+mujer\s*\]/gi, '[Female Vocals]'],
+  [/\[\s*dueto\s*\]/gi, '[Duet]'],
+  [/\[\s*d[úu]o\s*\]/gi, '[Duet]'],
+  [/\[\s*amb[oa]s\s+(las\s+)?voces\s*\]/gi, '[Duet]'],
+  [/\[\s*amb[oa]s\s*\]/gi, '[Duet]'],
+  [/\[\s*hombre\s*\]/gi, '[Male Vocals]'],
+  [/\[\s*mujer\s*\]/gi, '[Female Vocals]'],
+  // ── estructura ──
+  [/\[\s*pre[\s-]*coro\s*\]/gi, '[Pre-Chorus]'],
+  [/\[\s*coro([^\]]*)\]/gi, '[Chorus$1]'],
+  [/\[\s*verso([^\]]*)\]/gi, '[Verse$1]'],
+  [/\[\s*puente\s*\]/gi, '[Bridge]'],
+  [/\[\s*interludio\s*\]/gi, '[Interlude]'],
+  [/\[\s*solo\s+de\s+guitarra\s*\]/gi, '[Guitar Solo]'],
+  [/\[\s*solo\s+de\s+piano\s*\]/gi, '[Piano Solo]'],
+  [/\[\s*final\s*\]/gi, '[Outro]'],
+]
+
+/** Aplica todas las traducciones de metatags de una sola pasada. */
+export function letraParaSuno(letra: string): string {
+  return TRADUCCIONES_TAG.reduce((texto, [busca, reemplazo]) => texto.replace(busca, reemplazo), letra)
+}
+
 /**
  * Lanza la generación de una canción (Custom Mode: letra propia
  * + estilo). Devuelve las pistas creadas (normalmente 2 versiones)
@@ -299,7 +344,12 @@ export async function generarMusica(
   // 🩹 v0.8.1 — red de seguridad: por más que la UI ya recorte,
   // acá NUNCA se manda una letra de más de 5.000 caracteres (la
   // API la rechaza entera y se pierden los créditos del intento).
-  const { letra: letraAEnviar } = recortarLetraParaSuno(op.instrumental ? '' : op.letra)
+  // v0.11.3 — la traducción de metatags va ANTES del recorte:
+  // [Voz hombre]→[Male Vocals] alarga un poco el texto, así el
+  // tope se mide sobre lo que REALMENTE va a viajar.
+  const { letra: letraAEnviar } = recortarLetraParaSuno(
+    letraParaSuno(op.instrumental ? '' : op.letra),
+  )
   const r = await pedir(motor, '/api/v1/generate', {
     method: 'POST',
     body: JSON.stringify({
@@ -346,8 +396,12 @@ export async function extenderMusica(
     modelo: string
   },
 ): Promise<PistaSuno[]> {
-  // 🩹 v0.8.1 — mismo tope de 5.000 para la letra de la continuación
-  const { letra: letraAEnviar } = recortarLetraParaSuno(op.instrumental ? '' : op.letra)
+  // 🩹 v0.11.1 — mismo tope de 5.000 para la letra de la continuación
+  // v0.11.3 — y mismos metatags traducidos: la continuación alterna
+  // las voces igual que la parte original del dúo.
+  const { letra: letraAEnviar } = recortarLetraParaSuno(
+    letraParaSuno(op.instrumental ? '' : op.letra),
+  )
   const r = await pedir(motor, '/api/v1/generate/extend', {
     method: 'POST',
     body: JSON.stringify({
