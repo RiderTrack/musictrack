@@ -19,7 +19,7 @@ import { useToast } from '@/components/ui/Toast'
 import { vibrar, abrirURL, copiarTexto } from '@/core/natives/plataforma'
 import {
   ENERGIAS_ESTILO,
-  ESTILOS_RAPIDOS,
+  FAMILIAS_RECETAS,
   GRUPOS_INSTRUMENTOS_ESTILO,
   GRUPOS_TAGS_ESTILO,
   INSTRUMENTOS_ESTILO,
@@ -32,9 +32,11 @@ import {
   modeloSunoBonito,
   retratoDeArtista,
   type Cancion,
+  type FamiliaRecetas,
   type Letra,
   type MotorMusica,
   type PestannaId,
+  type RecetaEstilo,
 } from '@/types'
 
 // ═══════════════════════════════════════════════════════════
@@ -143,6 +145,13 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
   const [texto, setTexto] = useState('')
   const [titulo, setTitulo] = useState('')
   const [estilo, setEstilo] = useState('')
+  // 🍱 v0.14.0 — familia de recetas activa en el estudio (Cumbia,
+  // Salsa, Retro 80s/90s…): arranca en la que matchea el estilo
+  // actual (si vino de una letra) o en la primera.
+  const [familiaReceta, setFamiliaReceta] = useState(() => {
+    const i = FAMILIAS_RECETAS.findIndex((f) => f.recetas.some((r) => r.estilo === estilo))
+    return i >= 0 ? i : 0
+  })
   // 🎯 v0.9.1 — artistas que inspiran esta canción: se precargan
   // con la letra (si Claude la escribió inspirada) y su retrato
   // sonoro se suma al estilo al generar (Suno no acepta nombres).
@@ -357,6 +366,23 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
       return
     }
     alternarTag(tag)
+  }
+
+  // 🍱 v0.14.0 — aplicar una RECETA completa: reemplaza el estilo
+  // entero con el combo armado (género + todos los instrumentos +
+  // carácter + tempo). Como las partes usan los mismos nombres que
+  // los chips de abajo, los instrumentos se encienden solos y Rudy
+  // puede sumar o quitar lo que quiera a partir de ahí.
+  function aplicarReceta(familia: FamiliaRecetas, receta: RecetaEstilo) {
+    vibrar()
+    setEstilo(receta.estilo)
+    const familiaActiva = FAMILIAS_RECETAS.findIndex((f) => f.recetas.some((r) => r.estilo === estilo))
+    if (familiaActiva >= 0 && familiaActiva !== familiaReceta) setFamiliaReceta(familiaActiva)
+    mostrar(
+      `🍱 ${familia.titulo} · ${receta.etiqueta} — receta aplicada. Sumá o quitá lo que quieras abajo`,
+      'ok',
+      4000,
+    )
   }
 
   async function generar() {
@@ -735,6 +761,59 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                 Armar el estilo <span className="font-medium normal-case">(desplegá lo que quieras tocar)</span>
               </p>
 
+              {/* 🍱 v0.14.0 — RECETAS POR ESTILO (el «ajustes rápidos
+                  que sí arma todo» pedido por Rudy): elegí una FAMILIA
+                  y tocá una receta — reemplaza el estilo con el combo
+                  COMPLETO (todos los instrumentos + tempo + carácter)
+                  y los chips de abajo se encienden solos para seguir
+                  ajustando a mano. Va PRIMERO en el estudio. */}
+              <GrupoPlegable
+                titulo="🍱 Recetas por estilo"
+                nota="elegí un estilo y te lo armo completo"
+                abierta
+                activos={FAMILIAS_RECETAS.some((f) => f.recetas.some((r) => r.estilo === estilo)) ? 1 : 0}
+              >
+                <div className="flex w-full flex-wrap gap-1.5">
+                  {FAMILIAS_RECETAS.map((f, i) => (
+                    <button
+                      key={f.titulo}
+                      type="button"
+                      aria-pressed={familiaReceta === i}
+                      onClick={() => {
+                        vibrar()
+                        setFamiliaReceta(i)
+                      }}
+                      className={claseChip(familiaReceta === i)}
+                    >
+                      {familiaReceta === i ? `✓ ${f.icono} ${f.titulo}` : `${f.icono} ${f.titulo}`}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid w-full grid-cols-2 gap-1.5">
+                  {FAMILIAS_RECETAS[familiaReceta].recetas.map((r) => {
+                    const activa = estilo === r.estilo
+                    return (
+                      <button
+                        key={r.etiqueta}
+                        type="button"
+                        onClick={() => aplicarReceta(FAMILIAS_RECETAS[familiaReceta], r)}
+                        className={`rounded-xl border p-2 text-left transition-colors ${
+                          activa
+                            ? 'border-acento bg-acento/10'
+                            : 'border-neutral-200 bg-transparent hover:border-acento/60 dark:border-neutral-700'
+                        }`}
+                      >
+                        <span className="block text-[11px] font-bold leading-tight text-neutral-700 dark:text-neutral-200">
+                          {activa ? '✓ ' : ''}
+                          {r.etiqueta}
+                        </span>
+                        <span className="mt-0.5 block text-[9px] leading-snug text-neutral-400">{r.detalle}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </GrupoPlegable>
+
               {GRUPOS_TAGS_ESTILO.map((g, i) => (
                 <GrupoPlegable key={g.titulo} titulo={g.titulo} activos={g.tags.filter((t) => partesEstilo.includes(t.toLowerCase())).length} abierta={i === 0}>
                   {g.tags.map((t) => {
@@ -830,25 +909,8 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                 })}
               </GrupoPlegable>
 
-              {/* Recetas completas (género + instrumentos + BPM): tocar
-                  una REEMPLAZA el estilo entero. */}
-              <GrupoPlegable titulo="Recetas rápidas" nota="reemplazan el estilo" activos={ESTILOS_RAPIDOS.some((e) => estilo === e) ? 1 : 0}>
-                {ESTILOS_RAPIDOS.map((e) => (
-                  <button
-                    key={e}
-                    type="button"
-                    onClick={() => setEstilo(e)}
-                    title={e}
-                    className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-colors ${
-                      estilo === e
-                        ? 'border-acento bg-acento text-white'
-                        : 'border-neutral-200 bg-transparent text-neutral-500 hover:border-acento/60 dark:border-neutral-700 dark:text-neutral-400'
-                    }`}
-                  >
-                    {e.split(',')[0]}
-                  </button>
-                ))}
-              </GrupoPlegable>
+              {/* (las recetas de familia viven AHORA ARRIBA del
+                  estudio: «Recetas por estilo», lo primero que se ve) */}
             </div>
 
             {/* ⏱️ v0.8.0 — DURACIÓN: la causa raíz del corte era que

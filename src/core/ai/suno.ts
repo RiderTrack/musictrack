@@ -224,6 +224,266 @@ function pistasDesdeRespuesta(r: RespuestaSuno, tituloAlternativo: string): Pist
  * rechazar el pedido entero (créditos perdidos). */
 export const LIMITE_ESTILO_SUNO = 200
 
+/** v0.14.0 — DICCIONARIO DE FRONTERA COMPLETO. La lección de
+ * v0.11.2 (las voces se mezclaban porque Suno se entrenó con tags
+ * en INGLÉS) aplica a TODO el estilo, no solo a las voces: «tumba-
+ * doras» o «ochentero» viajan a medias y la esencia se pierde.
+ * Este pase traduce géneros, instrumentos, energías, épocas y
+ * producción al inglés canónico JUSTO ANTES de enviar a la API —
+ * lo que se ve, se guarda y se comparte queda en español.
+ * Ordenadas de MÁS específica a menos: «coro épico» antes que
+ * «coro», «cumbia peruana» antes que «cumbia», «bajo profundo»
+ * antes que «bajo». Lo que no está en el diccionario pasa tal
+ * cual (cumbia, salsa, reggaeton, perreo… son palabras que Suno
+ * ya conoce). NUNCA se toca «solo» (vive en el refuerzo
+ * «solo female singer»). */
+const TRADUCCIONES_ESTILO: ReadonlyArray<readonly [RegExp, string]> = [
+  // ── épocas (la musicalidad de cada década) ──
+  [/m[úu]sica de los (70|80|90)s?/gi, '$1s'],
+  [/\ba[ñn]os (70|80|90)\b/gi, '$1s'],
+  [/\bde los (70|80|90)s?\b/gi, '$1s'],
+  [/\bochenter[oa]s?\b/gi, '80s'],
+  [/\bnoventer[oa]s?\b/gi, '90s'],
+  [/\bsetenter[oa]s?\b/gi, '70s'],
+  // ── géneros latinos y del mundo ──
+  [/cumbia peruana/gi, 'peruvian cumbia'],
+  [/cumbia colombiana/gi, 'colombian cumbia'],
+  [/cumbia amaz[óo]nica/gi, 'amazonian cumbia'],
+  [/tecno-?cumbia/gi, 'tecno cumbia'],
+  [/\bchicha\b/gi, 'peruvian chicha'],
+  [/balada romántica/gi, 'romantic ballad'],
+  [/balada anime/gi, 'anime ballad'],
+  [/\bbalada\b/gi, 'ballad'],
+  [/metal sinf[óo]nico/gi, 'symphonic metal'],
+  [/sinf[óo]nic[oa]s?\b/gi, 'symphonic'],
+  [/orquesta completa/gi, 'full orchestra'],
+  [/\borquestas?\b/gi, 'orchestra'],
+  [/orquestal(?:es)?\b/gi, 'orchestral'],
+  [/trap latino/gi, 'latin trap'],
+  [/pop latino/gi, 'latin pop'],
+  [/reggaet[óo]n/gi, 'reggaeton'],
+  [/salsa romántica/gi, 'romantic salsa'],
+  [/folclore andino/gi, 'andean folk'],
+  [/m[úu]sica medieval/gi, 'medieval music'],
+  [/banda sonora épica/gi, 'epic soundtrack'],
+  [/polka norte[ñn]a/gi, 'norteño polka'],
+  [/ritmo uno\b/gi, 'on the one'],
+  // ── guitarras y bajo ──
+  [/guitarras distorsionadas/gi, 'distorted guitars'],
+  [/guitarra distorsionada/gi, 'distorted guitar'],
+  [/guitarra el[ée]ctrica/gi, 'electric guitar'],
+  [/guitarras el[ée]ctricas/gi, 'electric guitars'],
+  [/guitarra ac[úu]stica/gi, 'acoustic guitar'],
+  [/guitarras ac[úu]sticas/gi, 'acoustic guitars'],
+  [/guitarra espa[ñn]ola/gi, 'spanish guitar'],
+  [/guitarras psicod[ée]licas/gi, 'psychedelic guitars'],
+  [/guitarras r[áa]pidas/gi, 'fast guitars'],
+  [/guitarras crudas/gi, 'raw guitars'],
+  [/guitarras sucias/gi, 'dirty guitars'],
+  [/guitarras grandes/gi, 'big guitars'],
+  [/guitarras gemelas/gi, 'twin guitars'],
+  [/guitarras melodiosas/gi, 'melodic guitars'],
+  [/muro de guitarras/gi, 'wall of guitars'],
+  [/muros de guitarra/gi, 'wall of guitars'],
+  [/guitarra r[íi]tmica/gi, 'rhythm guitar'],
+  [/guitarra atmosf[ée]rica/gi, 'atmospheric guitar'],
+  [/guitarra folcl[óo]rica/gi, 'folk guitar'],
+  [/solos de guitarra/gi, 'guitar solos'],
+  [/solo de guitarra/gi, 'guitar solo'],
+  [/riff saltar[íi]n/gi, 'bouncy riff'],
+  [/riffs pesados/gi, 'heavy riffs'],
+  [/riff pesado/gi, 'heavy riff'],
+  [/doble bombo/gi, 'double kick drums'],
+  [/bajo profundo/gi, 'deep bass'],
+  [/bajo el[ée]ctrico/gi, 'electric bass'],
+  [/bajo slap/gi, 'slap bass'],
+  [/bajo galopante/gi, 'galloping bass'],
+  [/bajo pulsante/gi, 'pulsing bass'],
+  [/bajo protag[óo]nico/gi, 'prominent bass'],
+  [/\bbajo\b/gi, 'bass'],
+  // ── teclas, cuerdas y vientos ──
+  [/cajas de ritmos/gi, 'drum machines'],
+  [/caja de ritmos/gi, 'drum machine'],
+  [/sintetizadores\b/gi, 'synthesizers'],
+  [/sintetizador\b/gi, 'synthesizer'],
+  [/teclados\b/gi, 'keyboards'],
+  [/teclado\b/gi, 'keyboard'],
+  [/[óo]rgano\b/gi, 'organ'],
+  [/clavec[íi]n/gi, 'harpsichord'],
+  [/acorde[óo]n/gi, 'accordion'],
+  [/bandone[óo]n/gi, 'bandoneon'],
+  [/secci[óo]n de metales/gi, 'horn section'],
+  [/\bmetales\b/gi, 'horns'],
+  [/saxof[óo]n/gi, 'saxophone'],
+  [/\bsaxo\b/gi, 'saxophone'],
+  [/trompetas\b/gi, 'trumpets'],
+  [/trompeta\b/gi, 'trumpet'],
+  [/tromb[óo]n/gi, 'trombone'],
+  [/corno franc[ée]s/gi, 'french horn'],
+  [/flauta dulce/gi, 'recorder'],
+  [/\bflauta\b/gi, 'flute'],
+  [/\bquena\b/gi, 'quena flute'],
+  [/zampo[ñn]a/gi, 'andean panpipes'],
+  [/\bgaitas?\b/gi, 'bagpipes'],
+  [/contrabajo/gi, 'double bass'],
+  [/\bcuerdas\b/gi, 'strings'],
+  [/viol[íi]n/gi, 'violin'],
+  [/\bchelo\b/gi, 'cello'],
+  [/arpa c[ée]ltica/gi, 'celtic harp'],
+  [/\barpa\b/gi, 'harp'],
+  [/la[úu]d\b/gi, 'lute'],
+  [/mandolina/gi, 'mandolin'],
+  [/dulc[ée]mele/gi, 'dulcimer'],
+  [/cuerno de guerra/gi, 'war horn'],
+  [/vibr[áa]fono/gi, 'vibraphone'],
+  [/arm[óo]nica\b/gi, 'harmonica'],
+  [/arm[óo]nico\b/gi, 'harmonic'],
+  [/armon[íi]as operísticas/gi, 'operatic harmonies'],
+  [/armon[íi]as vocales/gi, 'vocal harmonies'],
+  [/armon[íi]as\b/gi, 'harmonies'],
+  // ── percusión ──
+  [/tumbadoras/gi, 'congas'],
+  [/\bbong[óo](?![a-záéíóúüñ])/gi, 'bongos'],
+  [/g[üu]iro\b/gi, 'guiro'],
+  [/g[üu]ira\b/gi, 'guira'],
+  [/caj[óo]n(?![a-záéíóúüñ])/gi, 'cajon drum'],
+  [/\btabla\b/gi, 'tabla drums'],
+  [/tambores de guerra/gi, 'war drums'],
+  [/tambores taiko/gi, 'taiko drums'],
+  [/\btambores\b/gi, 'drums'],
+  [/percusi[óo]n [ée]pica/gi, 'epic percussion'],
+  [/percusi[óo]n latina/gi, 'latin percussion'],
+  [/percusi[óo]n brasile[ñn]a/gi, 'brazilian percussion'],
+  [/\bpercusi[óo]n\b/gi, 'percussion'],
+  [/campanas tubulares/gi, 'tubular bells'],
+  [/\bcampanas\b/gi, 'bells'],
+  [/bater[íi]a\b/gi, 'drums'],
+  [/pandereta/gi, 'tambourine'],
+  [/casta[ñn]uelas/gi, 'castanets'],
+  [/palmadas/gi, 'claps'],
+  [/\bpalmas\b/gi, 'handclaps'],
+  // ── coros y voces (después de las de dúo, que van primero) ──
+  [/coros respondones/gi, 'call and response vocals'],
+  [/coros vocales/gi, 'vocal harmonies'],
+  [/coros gospel/gi, 'gospel choir'],
+  [/coro gregoriano/gi, 'gregorian chant'],
+  [/coros [ée]picos/gi, 'epic choirs'],
+  [/coro [ée]pico/gi, 'epic choir'],
+  [/coro femenino/gi, 'female choir'],
+  [/coro masculino/gi, 'male choir'],
+  [/coros de guerra/gi, 'war chants'],
+  [/coros de estadio/gi, 'stadium chants'],
+  [/coros de taberna/gi, 'tavern choir'],
+  [/coros masivos/gi, 'massive choirs'],
+  [/coros gigantes/gi, 'huge choirs'],
+  [/coros festivos/gi, 'festive choirs'],
+  [/coros cantables/gi, 'singalong choirs'],
+  [/coros en capas/gi, 'layered choirs'],
+  [/voces femeninas/gi, 'female vocals'],
+  [/voces masculinas/gi, 'male vocals'],
+  [/voces en multicapas/gi, 'layered vocals'],
+  [/voces agudas/gi, 'high-pitched vocals'],
+  [/voz aguda/gi, 'high vocals'],
+  [/voz rasposa/gi, 'raspy vocals'],
+  [/voz grave/gi, 'deep vocals'],
+  [/voz de tenor/gi, 'tenor vocals'],
+  [/voz de terciopelo/gi, 'velvet vocals'],
+  [/voz desgarrada/gi, 'heartbroken vocals'],
+  [/voz poderosa/gi, 'powerful vocals'],
+  [/voz femenina oper[áa]tica/gi, 'operatic female vocals'],
+  [/gritos de alma/gi, 'soulful shouts'],
+  [/canto grupal/gi, 'group singing'],
+  [/coros\b/gi, 'backing vocals'],
+  [/\bcoro\b/gi, 'choir'],
+  // ── energía, carácter y producción ──
+  [/en[ée]rgic[oa]s?\b/gi, 'energetic'],
+  [/energ[ée]tico\b/gi, 'energetic'],
+  [/tranquil[oa]s?\b/gi, 'calm'],
+  [/relajad[oa]s?\b/gi, 'relaxed'],
+  [/[ée]pic[oa]s?\b/gi, 'epic'],
+  [/agresiv[oa]s?\b/gi, 'aggressive'],
+  [/alegre[s]?\b/gi, 'upbeat'],
+  [/melanc[óo]lic[oa]s?\b/gi, 'melancholic'],
+  [/romantiqu[íi]/gi, 'romantic'],
+  [/rom[áa]ntic[oa]s?\b/gi, 'romantic'],
+  [/oscur[oa]s?\b/gi, 'dark'],
+  [/nost[áa]lgic[oa]s?\b/gi, 'nostalgic'],
+  [/dram[áa]tic[oa]s?\b/gi, 'dramatic'],
+  [/motivacional/gi, 'motivational'],
+  [/triunfante/gi, 'triumphant'],
+  [/festiv[oa]s?\b/gi, 'festive'],
+  [/vibrante/gi, 'vibrant'],
+  [/brillante[s]?\b/gi, 'bright'],
+  [/psicod[ée]lic[oa]s?\b/gi, 'psychedelic'],
+  [/emocional(?:es)?\b/gi, 'emotional'],
+  [/emotiv[oa]s?\b/gi, 'emotional'],
+  [/juvenil(?:es)?\b/gi, 'youthful'],
+  [/fresc[oa]s?\b/gi, 'fresh'],
+  [/festivaler[oa]s?\b/gi, 'festival'],
+  [/bailables?\b/gi, 'danceable'],
+  [/[íi]ntim[oa]s?\b/gi, 'intimate'],
+  [/pegadiz[oa]s?\b/gi, 'catchy'],
+  [/pegajos[oa]s?\b/gi, 'catchy'],
+  [/potente[s]?\b/gi, 'powerful'],
+  [/nocturn[oa]s?\b/gi, 'nocturnal'],
+  [/cinematogr[áa]fic[oa]s?\b/gi, 'cinematic'],
+  [/ac[úu]stic[oa]s?\b/gi, 'acoustic'],
+  [/en vivo\b/gi, 'live'],
+  [/distorsionad[oa]s?\b/gi, 'distorted'],
+  [/r[áa]pid[oa]s?\b/gi, 'fast'],
+  [/veloces\b/gi, 'fast'],
+  [/lent[oa]s?\b/gi, 'slow'],
+  [/suave[s]?\b/gi, 'smooth'],
+  [/\bduro\b/gi, 'hard'],
+  [/a la vez\b/gi, 'at once'],
+  [/gigante[s]?\b/gi, 'huge'],
+  [/enorme[s]?\b/gi, 'massive'],
+  [/profund[oa]s?\b/gi, 'deep'],
+  [/pulsante/gi, 'pulsing'],
+  [/hipn[óo]tic[oa]s?\b/gi, 'hypnotic'],
+  [/atmosf[ée]ric[oa]s?\b/gi, 'atmospheric'],
+  [/so[ñn]ad[oa]s?\b/gi, 'dreamy'],
+  [/oper[áa]ticas?\b/gi, 'operatic'],
+  [/[ée]terea?\b/gi, 'ethereal'],
+  [/dulce[s]?\b/gi, 'sweet'],
+  [/callejer[oa]s?\b/gi, 'street'],
+  [/colorid[oa]s?\b/gi, 'colorful'],
+  [/singular(?:es)?\b/gi, 'singular'],
+  [/crud[oa]s?\b/gi, 'raw'],
+  [/cl[áa]sic[oa]s?\b/gi, 'classic'],
+  [/impecable/gi, 'polished'],
+  [/pulido\b/gi, 'polished'],
+  [/minimalista/gi, 'minimalist'],
+  [/esperanzador/gi, 'hopeful'],
+  [/caribe[ñn][oa]\b/gi, 'caribbean'],
+  [/brasile[ñn][oa]\b/gi, 'brazilian'],
+  [/porte[ñn][oa]\b/gi, 'buenos aires style'],
+  [/operáticas\b/gi, 'operatic'],
+  // ── conectores y ambientitos (para que no quede spanglish) ──
+  [/\by\b/gi, 'and'],
+  [/\bcon\b/gi, 'with'],
+  [/\bsin\b/gi, 'without'],
+  [/\bfiesta\b/gi, 'party'],
+  [/\bverano\b/gi, 'summer'],
+  [/\bne[óo]n\b/gi, 'neon'],
+  [/\btaberna\b/gi, 'tavern'],
+  [/\bestadio\b/gi, 'stadium'],
+  [/\bhimnos\b/gi, 'anthems'],
+  [/\bhimno\b/gi, 'anthem'],
+  [/\bvinilo\b/gi, 'vinyl'],
+  [/\becos\b/gi, 'echoes'],
+  [/\beco\b/gi, 'echo'],
+  [/\bfalsete\b/gi, 'falsetto'],
+  [/muestras de jazz/gi, 'jazz samples'],
+  [/samples de jazz/gi, 'jazz samples'],
+  [/\bguturales\b/gi, 'growling vocals'],
+  [/\bgutural\b/gi, 'growled vocals'],
+  [/\bgalope\b/gi, 'galloping'],
+  [/\bcine de autos\b/gi, 'night drive'],
+  [/producci[óo]n\b/gi, 'production'],
+  [/\binstrumentos\b/gi, 'instruments'],
+]
+
 /** v0.11.2 — «le pedí solo voz femenina y salió mezclado»:
  * NO es error del usuario. El modelo de Suno se entrenó con
  * estilos en INGLÉS, así que el tag «voz femenina» en español
@@ -242,15 +502,22 @@ export const LIMITE_ESTILO_SUNO = 200
  * los artistas (p. ej. «voz femenina operática» de Nightwish).
  * El refuerzo «solo X singer» es positivo a propósito: pedir
  * «no male vocals» (negativo) en estos modelos suele LOGRAR lo
- * contrario, porque la atención cae en la palabra «male». */
+ * contrario, porque la atención cae en la palabra «male».
+ *
+ * v0.14.0 — después de las voces pasa el DICCIONARIO COMPLETO
+ * (TRADUCCIONES_ESTILO): géneros, instrumentos, energías y
+ * épocas también viajan en inglés canónico — así Suno captura
+ * de verdad la esencia pedida (los instrumentos de la cumbia
+ * peruana, el bajo slap del funk, el tempo ochentero…). */
 export function estiloParaSuno(estilo: string): string {
   const e0 = estilo.trim()
   if (!e0) return e0
   const enMinusculas = e0.toLowerCase()
-  const pideFemenina = enMinusculas.includes('voz femenina')
-  const pideMasculina = enMinusculas.includes('voz masculina')
+  const pideFemenina = enMinusculas.includes('voz femenina') || enMinusculas.includes('voces femeninas')
+  const pideMasculina = enMinusculas.includes('voz masculina') || enMinusculas.includes('voces masculinas')
   const pideDuo = enMinusculas.includes('dúo de voces') || enMinusculas.includes('duo de voces')
   let e = e0
+    .replace(/voz femenina oper[áa]tica/gi, 'operatic female vocals')
     .replace(/voz femenina/gi, 'female vocals')
     .replace(/voz masculina/gi, 'male vocals')
     .replace(/d[úu]o de voces/gi, 'male and female duet vocals')
@@ -259,6 +526,9 @@ export function estiloParaSuno(estilo: string): string {
   // mezclar es justamente lo buscado — nada que reforzar).
   if (pideFemenina && !pideDuo) e += ', solo female singer'
   if (pideMasculina && !pideDuo) e += ', solo male singer'
+  // v0.14.0 — el resto del estilo también viaja en inglés: géneros,
+  // instrumentos, energías, épocas y producción.
+  e = TRADUCCIONES_ESTILO.reduce((texto, [busca, reemplazo]) => texto.replace(busca, reemplazo), e)
   // tope de 200 del estilo: si el refuerzo no entró, se van
   // soltando tags del FINAL (nunca el primero, que es el género
   // principal) hasta que quepa entero.

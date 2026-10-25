@@ -110,6 +110,13 @@ export const GENEROS_MUSICALES = [
   'Folk metal',
   'Pop rock',
   'Indie / Alternativo',
+  'Funk',
+  'Disco',
+  'Pop ochentero (80s)',
+  'Pop noventero (90s)',
+  'Rock ochentero (80s)',
+  'Rock noventero (90s)',
+  'Synthwave',
   'Hip-hop / Rap',
   'R&B',
   'Folclore andino',
@@ -219,46 +226,384 @@ export const MODELOS_LYRIA = [
 
 export type MotorMusica = 'suno' | 'lyria'
 
-export const ESTILOS_RAPIDOS = [
-  'reggaetón, dembow, perreo, 96 bpm',
-  'trap latino, oscuro, 808 profundo',
-  'balada romántica, piano, cuerdas',
-  'cumbia peruana, guitarra, timbales',
-  // 🇵🇪 v0.13.0 — cumbia peruana en sus tres sabores: la orquesta
-  // clásica (Grupo 5 / Agua Marina), la juvenil (Corazón Serrano)
-  // y la chicha amazónica que ya estaba
-  'cumbia peruana romántica, orquesta, trompetas, saxo, tumbadoras',
-  'tecno-cumbia peruana, juvenil, sintetizadores, guiro',
-  'cumbia colombiana, acordeón, alegre, tambores',
-  'salsa dura, trompetas, tumbao',
-  'pop latino, pegadizo, verano',
-  'rock en español, guitarras distorsionadas',
-  'R&B latino, suave, groovy',
-  'rock punk, energético, guitarras crudas',
-  'corrido tumbado, requinto, trompetas',
-  'synthwave, ochentero, sintetizadores',
-  'lo-fi hip hop, relajado, vinilo',
-  // 🇯🇵 v0.9.1 — las dos caras del anime: batalla y balada
-  'j-rock anime, guitarras rápidas, enérgico, épico, 170 bpm',
-  'balada anime, piano, emocional, cuerdas, voz femenina',
-  // 🌍 v0.12.0 — el pedido de «más estilos»: un viaje por el mundo
-  'city pop japonés, ochentero, funky, brillante',
-  'k-pop, pegadizo, producción brillante, EDM pop',
-  'ópera rock, épica, coros, guitarra y orquesta',
-  'folk metal medieval, gaitas, laúd, coros de taberna',
-  'metal sinfónico, orquesta, coros épicos, voz femenina operática',
-  'darksynth, oscuro, cinematográfico, bajo pulsante',
-  'phonk, memphis, distorsionado, cowbell',
-  'afrobeats, groove, percusión alegre',
-  'bossa nova, suave, guitarra y viento íntimo',
-  'tango, bandoneón, dramático, porteño',
-  'samba batucada, carnaval, percusión brasileña',
-  'bolero, romántico, trío, años 50',
-  'chicha peruana, guitarra psicodélica, cumbia amazónica',
-  // 🎤 v0.13.0 — solo voces
-  'a capella, coros vocales, beatbox, sin instrumentos',
-  'gospel, coros grandes, órgano, esperanzador',
-] as const
+/** 🍱 v0.14.0 — RECETAS POR ESTILO: el pedido de Rudy («escojo
+ * cumbia y que me dé TODOS los instrumentos que necesita, con
+ * orquesta, con coros, etcétera»). Cada FAMILIA (Cumbia, Salsa,
+ * Rock, Retro 80s/90s…) tiene recetas COMPLETAS: género + todos
+ * los instrumentos + carácter + tempo. Tocar una receta REEMPLAZA
+ * el estilo entero — y como las partes usan los MISMOS nombres de
+ * los chips de abajo, los instrumentos se encienden solos. */
+export interface RecetaEstilo {
+  /** Nombre corto de la receta («Orquesta clásica»). */
+  etiqueta: string
+  /** Qué trae, en chiquito («trompetas, saxo, tumbadoras…»). */
+  detalle: string
+  /** El estilo COMPLETO que reemplaza el campo. */
+  estilo: string
+}
+
+export interface FamiliaRecetas {
+  titulo: string
+  icono: string
+  nota: string
+  recetas: RecetaEstilo[]
+}
+
+export const FAMILIAS_RECETAS: FamiliaRecetas[] = [
+  {
+    icono: '🇵🇪',
+    titulo: 'Cumbia',
+    nota: 'peruana, colombiana y chicha',
+    recetas: [
+      {
+        etiqueta: 'Orquesta clásica',
+        detalle: 'trompetas, saxo, tumbadoras, timbales y güiro',
+        estilo: 'cumbia peruana, orquesta, trompetas, saxofón, tumbadoras, timbales, güiro, romántica, 100 bpm',
+      },
+      {
+        etiqueta: 'Con coros',
+        detalle: 'orquesta + coros respondones de fiesta',
+        estilo: 'cumbia peruana, orquesta, trompetas, timbales, güiro, coros respondones, festiva, 100 bpm',
+      },
+      {
+        etiqueta: 'Tecno-cumbia juvenil',
+        detalle: 'sintetizadores, güiro y coro femenino',
+        estilo: 'tecno-cumbia, cumbia peruana, sintetizadores, güiro, bajo, coro femenino, vibrante, 100 bpm',
+      },
+      {
+        etiqueta: 'Colombiana alegre',
+        detalle: 'acordeón, güira, tambora y maracas',
+        estilo: 'cumbia colombiana, acordeón, güira, tambora, maracas, alegre, 100 bpm',
+      },
+      {
+        etiqueta: 'Chicha amazónica',
+        detalle: 'guitarra con eco, órgano y bongó',
+        estilo: 'chicha, guitarra eléctrica, órgano, timbales, bongó, psicodélica, nostálgica, 100 bpm',
+      },
+      {
+        etiqueta: 'Sonidera',
+        detalle: 'sintetizadores, ecos y fiesta de barrio',
+        estilo: 'cumbia, sintetizadores, güiro, timbales, coros, festiva, 100 bpm',
+      },
+    ],
+  },
+  {
+    icono: '💃',
+    titulo: 'Salsa & tropical',
+    nota: 'salsa, merengue, bachata',
+    recetas: [
+      {
+        etiqueta: 'Salsa dura',
+        detalle: 'trompetas, trombón, tumbadoras y piano',
+        estilo: 'salsa, trompetas, trombón, piano, tumbadoras, timbales, bongó, contrabajo, enérgica, 100 bpm',
+      },
+      {
+        etiqueta: 'Salsa romántica',
+        detalle: 'piano, cuerdas y trompetas suaves',
+        estilo: 'salsa, romántica, piano, cuerdas, trompetas, suave, 100 bpm',
+      },
+      {
+        etiqueta: 'Merengue fiesta',
+        detalle: 'güira, tambora y saxofón',
+        estilo: 'merengue, güira, tambora, saxofón, trompetas, festiva, 128 bpm',
+      },
+      {
+        etiqueta: 'Bachata romántica',
+        detalle: 'requinto, bongó y güira',
+        estilo: 'bachata, requinto, bongó, güira, bajo, romántica, 128 bpm',
+      },
+      {
+        etiqueta: 'Vallenato',
+        detalle: 'acordeón y percusión de pueblo',
+        estilo: 'vallenato, acordeón, percusión, alegre, 100 bpm',
+      },
+    ],
+  },
+  {
+    icono: '🔥',
+    titulo: 'Urbano',
+    nota: 'reggaetón, trap y dancehall',
+    recetas: [
+      {
+        etiqueta: 'Perreo clásico',
+        detalle: 'dembow y bajo profundo',
+        estilo: 'reggaetón, dembow, perreo, bajo profundo, 96 bpm',
+      },
+      {
+        etiqueta: 'Trap oscuro',
+        detalle: '808 pesado, noche y frío',
+        estilo: 'trap, oscuro, 808, bajo profundo, 140 bpm',
+      },
+      {
+        etiqueta: 'Reggaetón romántico',
+        detalle: 'perreo suave con sintetizadores',
+        estilo: 'reggaetón, romántica, sintetizadores, bajo profundo, 96 bpm',
+      },
+      {
+        etiqueta: 'Dancehall',
+        detalle: 'groove caribeño para bailar',
+        estilo: 'dancehall, groove, alegre, 100 bpm',
+      },
+    ],
+  },
+  {
+    icono: '🤘',
+    titulo: 'Rock & metal',
+    nota: 'de la balada al blast',
+    recetas: [
+      {
+        etiqueta: 'Rock clásico',
+        detalle: 'guitarras, batería y coros',
+        estilo: 'rock, guitarras distorsionadas, batería, bajo, coros, enérgica, 128 bpm',
+      },
+      {
+        etiqueta: 'Hard rock 80s',
+        detalle: 'solos, teclados y coros de estadio',
+        estilo: 'hard rock, arena rock, guitarras distorsionadas, solo de guitarra, teclados, coros, épica, 128 bpm',
+      },
+      {
+        etiqueta: 'Rock 90s',
+        detalle: 'guitarras crudas y actitud',
+        estilo: 'grunge, rock, guitarras distorsionadas, batería, bajo, nostálgica, 128 bpm',
+      },
+      {
+        etiqueta: 'Punk',
+        detalle: 'tres acordes y velocidad',
+        estilo: 'punk, rock, guitarras distorsionadas, doble bombo, enérgica, 160 bpm',
+      },
+      {
+        etiqueta: 'Metal clásico',
+        detalle: 'riffs pesados y solos',
+        estilo: 'heavy metal, metal, riffs pesados, doble bombo, solo de guitarra, enérgica, 160 bpm',
+      },
+      {
+        etiqueta: 'Power metal',
+        detalle: 'teclados, doble bombo y coro épico',
+        estilo: 'power metal, teclados, doble bombo, coro épico, solo de guitarra, épica, 180 bpm',
+      },
+      {
+        etiqueta: 'Metal sinfónico',
+        detalle: 'orquesta y voz femenina operática',
+        estilo: 'metal sinfónico, orquestal, cuerdas, coros, voz femenina, épica, 128 bpm',
+      },
+    ],
+  },
+  {
+    // 📼 v0.14.0 — el pedido de «música de los 80 y de los 90, funk,
+    // rock ochentero…»: recetas que capturan los instrumentos, la
+    // musicalidad y el tempo de cada época.
+    icono: '📼',
+    titulo: 'Retro 80s & 90s',
+    nota: 'funk, synth-pop y nostalgia',
+    recetas: [
+      {
+        etiqueta: 'Synthwave',
+        detalle: 'sintetizadores analógicos y caja de ritmos',
+        estilo: 'synthwave, sintetizadores, caja de ritmos, bajo, nostálgica, 100 bpm',
+      },
+      {
+        etiqueta: 'Pop ochentero',
+        detalle: 'sintetizadores, coros y brillo de neón',
+        estilo: 'synth pop, pop, sintetizadores, caja de ritmos, coros, brillante, 128 bpm',
+      },
+      {
+        etiqueta: 'Rock 80s',
+        detalle: 'guitarras grandes, solos y teclados',
+        estilo: 'arena rock, hard rock, guitarras distorsionadas, sintetizadores, solo de guitarra, coros, épica, 128 bpm',
+      },
+      {
+        etiqueta: 'Power ballad',
+        detalle: 'piano, guitarra emotiva y drama',
+        estilo: 'balada, piano, guitarra eléctrica, coros, dramática, 70 bpm',
+      },
+      {
+        etiqueta: 'Funk',
+        detalle: 'bajo slap, clavinet y sección de metales',
+        estilo: 'funk, bajo slap, guitarra eléctrica, clavinet, palmadas, sección de metales, 100 bpm',
+      },
+      {
+        etiqueta: 'New wave',
+        detalle: 'sintetizadores y bajo saltarín',
+        estilo: 'new wave, synth pop, sintetizadores, bajo, guitarra eléctrica, vibrante, 128 bpm',
+      },
+      {
+        etiqueta: 'Pop 90s',
+        detalle: 'dance-pop brillante de revista',
+        estilo: 'dance-pop, pop, sintetizadores, caja de ritmos, coros, alegre, 128 bpm',
+      },
+      {
+        etiqueta: 'Rock 90s',
+        detalle: 'alternativo, distorsión y flanelas',
+        estilo: 'alternativo, grunge, rock, guitarras distorsionadas, batería, nostálgica, 128 bpm',
+      },
+      {
+        etiqueta: 'Eurodance',
+        detalle: 'beat de club y coro femenino',
+        estilo: 'eurodance, edm, sintetizadores, caja de ritmos, coro femenino, festiva, 128 bpm',
+      },
+      {
+        etiqueta: 'Hip-hop 90s',
+        detalle: 'boom bap con samples de jazz',
+        estilo: 'boom bap, hip-hop, bajo, batería, jazz, nostálgica, 90 bpm',
+      },
+    ],
+  },
+  {
+    icono: '🇯🇵',
+    titulo: 'Anime & J-music',
+    nota: 'batallas y baladas',
+    recetas: [
+      {
+        etiqueta: 'J-rock de batalla',
+        detalle: 'guitarras rápidas y doble bombo',
+        estilo: 'j-rock, anime rock, guitarras distorsionadas, doble bombo, solo de guitarra, enérgica, 170 bpm',
+      },
+      {
+        etiqueta: 'Balada anime',
+        detalle: 'piano, cuerdas y voz femenina',
+        estilo: 'balada anime, piano, cuerdas, voz femenina, emocional, 70 bpm',
+      },
+      {
+        etiqueta: 'Anison épico',
+        detalle: 'orquesta y coros de opening',
+        estilo: 'anison, anime opening, orquestal, coros, enérgica, 128 bpm',
+      },
+      {
+        etiqueta: 'City pop',
+        detalle: 'funky japonés con bajo slap',
+        estilo: 'city pop, funk, sintetizadores, bajo slap, vibrante, 100 bpm',
+      },
+    ],
+  },
+  {
+    icono: '✨',
+    titulo: 'Pop & balada',
+    nota: 'pegadizo y emotivo',
+    recetas: [
+      {
+        etiqueta: 'Pop latino',
+        detalle: 'pegadizo, verano y buen humor',
+        estilo: 'pop latino, pop, pegadizo, alegre, 128 bpm',
+      },
+      {
+        etiqueta: 'Balada al piano',
+        detalle: 'piano, cuerdas y sentimiento',
+        estilo: 'balada, piano, cuerdas, romántica, 70 bpm',
+      },
+      {
+        etiqueta: 'Balada orquestal',
+        detalle: 'orquesta completa y drama',
+        estilo: 'balada, orquestal, cuerdas, piano, dramática, 70 bpm',
+      },
+      {
+        etiqueta: 'Pop acústico',
+        detalle: 'guitarra, piano y voz',
+        estilo: 'pop, acústico, guitarra acústica, piano, tranquila, 100 bpm',
+      },
+      {
+        etiqueta: 'R&B suave',
+        detalle: 'groove lento y sintetizadores',
+        estilo: 'r&b, soul, sintetizadores, bajo, tranquila, 100 bpm',
+      },
+    ],
+  },
+  {
+    icono: '🎛️',
+    titulo: 'Electrónica',
+    nota: 'del club al lo-fi',
+    recetas: [
+      {
+        etiqueta: 'EDM festival',
+        detalle: 'drops gigantes y bajo profundo',
+        estilo: 'edm, house, sintetizadores, bajo profundo, enérgica, 128 bpm',
+      },
+      {
+        etiqueta: 'House',
+        detalle: 'groove de pista de baile',
+        estilo: 'house, dance-pop, sintetizadores, bajo, 128 bpm',
+      },
+      {
+        etiqueta: 'Lo-fi',
+        detalle: 'para estudiar y relajar',
+        estilo: 'lo-fi, hip-hop, piano, tranquila, 70 bpm',
+      },
+      {
+        etiqueta: 'Phonk',
+        detalle: 'cowbell, distorsión y drift',
+        estilo: 'phonk, cowbell, bajo profundo, oscura, 128 bpm',
+      },
+      {
+        etiqueta: 'Darksynth',
+        detalle: 'cinematográfico, oscuro y nocturno',
+        estilo: 'darksynth, synthwave, sintetizadores, bajo profundo, oscura, cinematográfico, 100 bpm',
+      },
+    ],
+  },
+  {
+    icono: '⚔️',
+    titulo: 'Épico & medieval',
+    nota: 'batallas y tabernas',
+    recetas: [
+      {
+        etiqueta: 'Folk metal',
+        detalle: 'violín, acordeón y coros',
+        estilo: 'folk metal, violín, acordeón, coros, enérgica, 160 bpm',
+      },
+      {
+        etiqueta: 'Taberna medieval',
+        detalle: 'laúd, gaita y tambores de guerra',
+        estilo: 'música medieval, laúd, gaita, tambores de guerra, coros, festiva, 100 bpm',
+      },
+      {
+        etiqueta: 'Banda sonora',
+        detalle: 'orquesta y percusión épica',
+        estilo: 'banda sonora épica, orquestal, percusión épica, coro épico, épica, 100 bpm',
+      },
+      {
+        etiqueta: 'Vikingo',
+        detalle: 'coros de guerra y tambores',
+        estilo: 'viking metal, folk metal, coros, tambores de guerra, épica, 128 bpm',
+      },
+    ],
+  },
+  {
+    icono: '🌎',
+    titulo: 'Mundo',
+    nota: 'ritmos del planeta',
+    recetas: [
+      {
+        etiqueta: 'Bossa nova',
+        detalle: 'guitarra suave y voz íntima',
+        estilo: 'bossa nova, guitarra española, tranquila, 70 bpm',
+      },
+      {
+        etiqueta: 'Tango',
+        detalle: 'bandoneón, piano y drama',
+        estilo: 'tango, bandoneón, piano, dramática, 100 bpm',
+      },
+      {
+        etiqueta: 'Flamenco',
+        detalle: 'guitarra española y palmas',
+        estilo: 'flamenco, guitarra española, palmadas, dramática, 100 bpm',
+      },
+      {
+        etiqueta: 'Andino',
+        detalle: 'quena, zampoña y charango',
+        estilo: 'folclore andino, quena, zampoña, charango, nostálgica, 100 bpm',
+      },
+      {
+        etiqueta: 'Corrido tumbado',
+        detalle: 'requinto, bajo y noches sierreñas',
+        estilo: 'corrido, requinto, bajo, nostálgica, 100 bpm',
+      },
+      {
+        etiqueta: 'Afrobeats',
+        detalle: 'percusión alegre y groove',
+        estilo: 'afrobeats, percusión, alegre, 100 bpm',
+      },
+    ],
+  },
+]
 
 /** Etiquetas de UN género para COMBINAR estilos (v0.6.0): tocás
  * varias y se van sumando al campo estilo ("rock, punk, energético").
@@ -313,6 +658,9 @@ export const GRUPOS_TAGS_ESTILO: { titulo: string; tags: string[] }[] = [
       'Rock progresivo',
       'Rock psicodélico',
       'Stoner rock',
+      'Arena rock',
+      'Glam metal',
+      'Britpop',
       'Metal',
       'Nu metal',
       'Metalcore',
@@ -378,6 +726,9 @@ export const GRUPOS_TAGS_ESTILO: { titulo: string; tags: string[] }[] = [
       'Gospel',
       'Bossa nova',
       'Flamenco',
+      'Synth pop',
+      'New wave',
+      'City pop',
       'Acústico',
       'Piano',
       'Sinfónico',
@@ -395,6 +746,9 @@ export const GRUPOS_TAGS_ESTILO: { titulo: string; tags: string[] }[] = [
       'Synthwave',
       'Lo-fi',
       'Phonk',
+      'Eurodance',
+      'Dance-pop',
+      'Boom bap',
       'Ambient',
       'Chill',
       'Reggae',
@@ -428,6 +782,9 @@ export const ENERGIAS_ESTILO = [
   'Celestial',
   'Festiva',
   'Vibrante',
+  // 📼 v0.14.0 — para las recetas retro y la chicha
+  'Brillante',
+  'Psicodélica',
 ] as const
 
 /** 🎤 Instrumentos protagonistas (v0.7.0): se suman al estilo
@@ -450,16 +807,26 @@ export const GRUPOS_INSTRUMENTOS_ESTILO: { titulo: string; tags: string[] }[] = 
       'Doble bombo',
       'Bajo',
       'Bajo profundo',
+      // 🎸 v0.14.0 — para funk, bachata y cumbia
+      'Bajo slap',
+      'Bajo eléctrico',
+      'Requinto',
+      'Cuatro',
     ],
   },
   {
     titulo: 'Cuerdas y teclas',
     tags: [
       'Piano',
+      'Teclados',
       'Sintetizadores',
       'Órgano',
       'Clavecín',
+      'Clavinet',
+      'Caja de ritmos',
       'Acordeón',
+      'Bandoneón',
+      'Melódica',
       'Cuerdas',
       'Violín',
       'Chelo',
@@ -481,6 +848,7 @@ export const GRUPOS_INSTRUMENTOS_ESTILO: { titulo: string; tags: string[] }[] = 
       'Tuba',
       'Saxofón',
       'Clarinete',
+      'Sección de metales',
     ],
   },
   {
@@ -501,9 +869,15 @@ export const GRUPOS_INSTRUMENTOS_ESTILO: { titulo: string; tags: string[] }[] = 
     ],
   },
   {
+    // 🥁 v0.14.0 — pedido del usuario: los instrumentos COMPLETOS
+    // de la cumbia, la salsa y el merengue en un solo vistazo
+    titulo: 'Percusión latina',
+    tags: ['Tumbadoras', 'Bongó', 'Güiro', 'Güira', 'Tambora', 'Maracas', 'Claves', 'Cajón', 'Cowbell', 'Guacharaca'],
+  },
+  {
     // 🧑‍🤝‍🧑 el «coro» del usuario: personas cantando detrás del solista
     titulo: 'Coros y voces',
-    tags: ['Coros', 'Coro épico', 'Coro femenino', 'Coro masculino', 'Coro gregoriano', 'Coros gospel', 'A capella'],
+    tags: ['Coros', 'Coro épico', 'Coro femenino', 'Coro masculino', 'Coro gregoriano', 'Coros gospel', 'Coros respondones', 'A capella'],
   },
   {
     titulo: 'Medieval y del mundo',
@@ -516,6 +890,11 @@ export const GRUPOS_INSTRUMENTOS_ESTILO: { titulo: string; tags: string[] }[] = 
       'Arpa céltica',
       'Cuerno de guerra',
       'Armónica',
+      'Marimba',
+      'Vibráfono',
+      'Steel pan',
+      'Sitar',
+      'Tabla',
       // 🇯🇵 v0.9.1 — para el sonido de anime
       'Koto',
       'Shamisen',
@@ -728,6 +1107,51 @@ export const DICCIONARIO_ARTISTAS: Record<string, string> = {
   'feid': 'reggaetón neón, groove nocturno, pegadizo',
   'luismi': 'balada romántica, voz de terciopelo, orquestal',
   'mago de oz': 'folk metal español, violín céltico, historias fantásticas',
+  // 📼 v0.14.0 — RETRATOS RETRO: el pedido de «música de los 80 y
+  // de los 90, funk, rock ochentero»: los artistas que definen
+  // cada época, con su esencia en tags Suno-safe (la frontera los
+  // traduce al inglés antes de enviarlos).
+  queen: 'rock épico, armonías operísticas, coros en capas, himnos de estadio',
+  'michael jackson': 'pop con funk, groove impecable, coros, producción brillante',
+  madonna: 'pop ochentero, dance, sintetizadores, actitud',
+  prince: 'funk, guitarra y sintetizadores, sensual, groove',
+  'whitney houston': 'balada ochentera, voz poderosa, gospel pop',
+  'a-ha': 'synth pop, sintetizadores, voz aguda, nostálgico',
+  'tears for fears': 'new wave, sintetizadores, producción enorme',
+  'duran duran': 'new wave, synth pop, bajo protagónico',
+  'cyndi lauper': 'pop ochentero colorido, voz singular, alegre',
+  'bruce springsteen': 'heartland rock, narrativa obrera, saxofón, armónica',
+  'bon jovi': 'hard rock ochentero, coros gigantes, himnos de estadio',
+  "guns n' roses": 'hard rock, guitarras sucias, actitud callejera, solo de guitarra',
+  'guns n roses': 'hard rock, guitarras sucias, actitud callejera, solo de guitarra',
+  journey: 'arena rock, voz aguda, teclados, coros enormes',
+  europe: 'glam metal, teclados, himno ochentero',
+  'def leppard': 'hard rock, coros masivos, batería gigante',
+  'bee gees': 'disco, falsete, dance de los 70',
+  abba: 'pop disco europeo, armonías, pegadizo',
+  'donna summer': 'disco, groove de pista, voz reina de la fiesta',
+  'earth wind and fire': 'funk orquestal, sección de metales, coros, celebración',
+  'earth wind & fire': 'funk orquestal, sección de metales, coros, celebración',
+  'earth, wind and fire': 'funk orquestal, sección de metales, coros, celebración',
+  'earth, wind & fire': 'funk orquestal, sección de metales, coros, celebración',
+  'james brown': 'funk crudo, ritmo uno, gritos de alma, sección de metales',
+  jamiroquai: 'funk acid jazz, groove moderno, sintetizadores',
+  'bruno mars': 'pop funk retro, groove, coros, alegre',
+  'nile rodgers': 'funk disco, guitarra rítmica, groove chic',
+  'pearl jam': 'grunge, voz grave, rock noventero crudo',
+  'alice in chains': 'grunge oscuro, armonías sombrías, riffs pesados',
+  soundgarden: 'grunge pesado, riffs lentos, voz aguda',
+  oasis: 'britpop, guitarras melodiosas, himnos arrogantes',
+  'smashing pumpkins': 'rock alternativo, muros de guitarra, dream pop pesado',
+  'the cranberries': 'rock alternativo, voz femenina singular, jangle pop',
+  'backstreet boys': 'pop noventero, armonías vocales, dance',
+  'spice girls': 'pop fiesta noventero, girl power, pegadizo',
+  'britney spears': 'pop dance noventero, pegadizo, producción brillante',
+  'ricky martin': 'pop latino noventero, fiesta, dance',
+  'mc hammer': 'hip-hop de los 90, dance, fiesta',
+  kavinsky: 'synthwave nocturno, sintetizadores, cine de autos',
+  'the midnight': 'synthwave con saxofón, nostálgico, neón',
+  'carpenter brut': 'darksynth agresivo, sintetizadores pesados, synthwave oscuro',
 }
 
 /** Sugerencias de artistas por género (los chips de Crear):
@@ -755,6 +1179,13 @@ export const ARTISTAS_REFERENCIA: Record<string, string[]> = {
   'Folk metal': ['Eluveitie', 'Korpiklaani', 'Alestorm', 'Amon Amarth'],
   'Pop rock': ['Coldplay', 'Paramore', 'Imagine Dragons', 'The Killers', 'Maná'],
   'Indie / Alternativo': ['Arctic Monkeys', 'Radiohead', 'Twenty One Pilots', 'Tame Impala', 'My Chemical Romance'],
+  Funk: ['Bruno Mars', 'James Brown', 'Jamiroquai', 'Earth Wind & Fire', 'Prince', 'Red Hot Chili Peppers', 'Nile Rodgers'],
+  Disco: ['Bee Gees', 'ABBA', 'Donna Summer', 'Michael Jackson', 'Earth Wind & Fire'],
+  'Pop ochentero (80s)': ['Michael Jackson', 'Madonna', 'Whitney Houston', 'a-ha', 'Duran Duran', 'Tears for Fears', 'Queen', 'Cyndi Lauper'],
+  'Pop noventero (90s)': ['Backstreet Boys', 'Spice Girls', 'Britney Spears', 'Ricky Martin', 'The Cranberries', 'Oasis'],
+  'Rock ochentero (80s)': ["Guns N' Roses", 'Bon Jovi', 'Journey', 'Europe', 'Def Leppard', 'Queen', 'Bruce Springsteen'],
+  'Rock noventero (90s)': ['Nirvana', 'Pearl Jam', 'Soundgarden', 'Alice in Chains', 'Oasis', 'The Offspring', 'Smashing Pumpkins'],
+  Synthwave: ['Kavinsky', 'The Midnight', 'Carpenter Brut'],
   'Hip-hop / Rap': ['Eminem', 'Kendrick Lamar', 'Residente', 'Canserbero'],
   'R&B': ['The Weeknd', 'Frank Ocean', 'SZA', 'Usher'],
   'Folclore andino': ['Los Kjarkas', 'Inti-Illimani', 'Víctor Jara'],
