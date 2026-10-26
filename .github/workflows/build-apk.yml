@@ -67,9 +67,10 @@ jobs:
       - name: Sync Capacitor plugins
         run: npx cap sync android
 
-      # 🎨 ÍCONOS OPCIONALES: si existe android-icons/ se copia ENCIMA del
-      # res/ generado (patrón PlantTrack). Si no, sale el ícono default de
-      # Capacitor — creá la carpeta cuando tengas tus PNGs.
+      # 🎨 ÍCONOS DE LA APP: android-icons/ (commiteado desde v0.14.1 con
+      # el logo oficial de MusicTrack) se copia ENCIMA del res/ generado
+      # (patrón RiderTrack v2 / PlantTrack). Regenerá los PNGs con
+      # scripts/generar-iconos-musictrack.py si cambiás el logo.
       - name: Apply launcher icon + splash (si existe android-icons/)
         run: |
           if [ -d android-icons ]; then
