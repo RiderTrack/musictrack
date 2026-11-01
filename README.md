@@ -114,20 +114,12 @@ Cada push a `main` dispara `build-apk.yml`:
 2. Web app → copiá las claves a `src/services/firebase.ts`
 3. Android app con el package name de TU app (post-fork) → bajá `google-services.json` → base64 → secret `GOOGLE_SERVICES_JSON`
 4. Authentication → habilitá Google (y agregá el SHA-1 del keystore que te muestra `generate-keystore.yml`)
-5. Firestore → reglas de `({prefijo}_sync/{uid})`: solo el dueño lee/escribe
+5. Firestore → reglas de **`firestore.rules`** (solo el dueño lee/escribe sus datos, incluidos los trozos)
+6. Storage → **Comenzar** (plan gratis, 5 GB) → reglas de **`storage.rules`** — ahí suben los MP3 de las canciones
 
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /trackstack_sync/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
-    }
-  }
-}
-```
+> v0.15.0: el respaldo es **automático y por trozos** (nadie topa el límite de 1MB por documento) y también sube los MP3 a Storage. `restaurarNube` hace merge sin borrar y baja los audios que falten en el dispositivo.
 
-*(reemplazá `trackstack` por el prefijo de tu app post-fork)*
+*(reemplazá `musictrack` por el prefijo de tu app post-fork en las reglas)*
 
 ## 🗺️ Hoja de ruta del template
 

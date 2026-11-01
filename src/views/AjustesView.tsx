@@ -40,6 +40,9 @@ export function AjustesView() {
   const [probandoSuno, setProbandoSuno] = useState(false)
   const [probandoLyria, setProbandoLyria] = useState(false)
   const [sincronizando, setSincronizando] = useState(false)
+  const [progresoSync, setProgresoSync] = useState('')
+  const [avisoStorage, setAvisoStorage] = useState(false)
+  const [ultimaSync, setUltimaSync] = useState(() => leer<number>('ultima_sync_nube', 0))
   const inputArchivo = useRef<HTMLInputElement>(null)
 
   // 🔄 Actualizador (FASE 2)
@@ -167,18 +170,38 @@ export function AjustesView() {
     if (!sesion) return
     vibrar()
     setSincronizando(true)
+    setAvisoStorage(false)
     try {
-      if (accion === 'respaldar') {
-        const n = await respaldarNube(sesion.uid)
-        mostrar(`${n} claves subidas a la nube`, 'ok')
-      } else {
-        const n = await restaurarNube(sesion.uid)
-        mostrar(n ? `${n} claves traídas de la nube` : 'La nube no tenía datos', 'info')
+      const alProgresar = (p: { etapa: 'claves' | 'audios'; hecho: number; total: number }) => {
+        setProgresoSync(p.etapa === 'claves' ? `Datos… (${p.hecho}/${p.total})` : `MP3… (${p.hecho}/${p.total})`)
       }
+      if (accion === 'respaldar') {
+        const r = await respaldarNube(sesion.uid, alProgresar)
+        setAvisoStorage(r.avisoStorage)
+        guardar('ultima_sync_nube', Date.now())
+        mostrar(
+          r.avisoStorage
+            ? `${r.claves} datos subidos — los MP3 necesitan Storage activo`
+            : `${r.claves} datos y ${r.audiosSubidos} MP3 nuevos en la nube`,
+          r.avisoStorage ? 'info' : 'ok',
+          4200,
+        )
+      } else {
+        const r = await restaurarNube(sesion.uid, alProgresar)
+        setAvisoStorage(r.avisoStorage)
+        mostrar(
+          r.claves || r.audiosBajados
+            ? `${r.claves} datos y ${r.audiosBajados} canciones recuperadas`
+            : 'La nube no tenía datos nuevos',
+          r.claves || r.audiosBajados ? 'ok' : 'info',
+        )
+      }
+      setUltimaSync(leer<number>('ultima_sync_nube', Date.now()))
     } catch (e) {
       mostrar(e instanceof Error ? e.message : 'Falló la sync', 'error', 4000)
     } finally {
       setSincronizando(false)
+      setProgresoSync('')
     }
   }
 
@@ -548,6 +571,10 @@ export function AjustesView() {
                   quieras → Crear.
                 </li>
                 <li>
+                  Menú <b>Build → Storage</b> → <b>Comenzar</b> → modo producción (para respaldar también los MP3 de tus
+                  canciones — plan gratis, 5 GB).
+                </li>
+                <li>
                   <b>⚙️ Configuración del proyecto</b> → abajo en «Tus apps» tocá el ícono{' '}
                   <b>&lt;/&gt;</b> (web) → registrala sin hosting → te muestra el bloque{' '}
                   <code className="rounded bg-neutral-100 px-1 dark:bg-neutral-800">firebaseConfig</code> → copialo ENTERO.
@@ -592,9 +619,29 @@ export function AjustesView() {
           <p className="text-sm text-neutral-500 dark:text-neutral-400">Iniciá sesión para respaldar tus datos en la nube.</p>
         ) : (
           <>
-            <p className="mb-3 text-xs text-neutral-500 dark:text-neutral-400">
-              Documento <code className="rounded bg-neutral-100 px-1 dark:bg-neutral-800">{APP.prefijoClaves}_sync/{sesion.uid.slice(0, 8)}…</code> — merge sin borrar, lo local manda.
-            </p>
+            <div className="mb-3 space-y-1 text-xs text-neutral-500 dark:text-neutral-400">
+              <p>
+                🤖 <b>Respaldo automático:</b> cada cambio que hacés sube solo (letras, canciones, listas, ajustes, claves y los MP3).
+              </p>
+              <p>
+                ☁️ Todo va a <b>TU</b> proyecto Firebase — merge sin borrar: lo local siempre manda.
+              </p>
+              {ultimaSync > 0 && (
+                <p className="text-neutral-400">
+                  Último respaldo: {new Date(ultimaSync).toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'short' })}
+                </p>
+              )}
+            </div>
+            {sincronizando && progresoSync && (
+              <p className="mb-2 flex items-center gap-2 text-sm text-acento">
+                <RefreshCw className="h-4 w-4 animate-spin" /> Subiendo/Bajando {progresoSync}
+              </p>
+            )}
+            {avisoStorage && (
+              <div className="mb-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300">
+                ⚠️ Los MP3 no viajaron: activá <b>Storage</b> en Firebase Console (Build → Storage → Comenzar, plan gratis, 5 GB) y volvé a respaldar. Tus letras y datos SÍ quedaron en la nube.
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-2">
               <Boton variante="secundario" icono={<Upload className="h-4 w-4" />} onClick={() => syncNube('respaldar')} cargando={sincronizando}>
                 Respaldo

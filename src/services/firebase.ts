@@ -21,6 +21,7 @@
 import { getApps, initializeApp, type FirebaseApp } from 'firebase/app'
 import { getAuth, type Auth } from 'firebase/auth'
 import { getFirestore, type Firestore } from 'firebase/firestore'
+import { getStorage, type FirebaseStorage } from 'firebase/storage'
 import { APP } from '@/data/app'
 
 export interface ConfigFirebase {
@@ -134,4 +135,9 @@ export function obtenerAuth(): Auth {
 
 export function obtenerFirestore(): Firestore {
   return getFirestore(obtenerApp())
+}
+
+/** v0.15.0 — Firebase Storage: ahí viven los MP3 respaldados. */
+export function obtenerStorage(): FirebaseStorage {
+  return getStorage(obtenerApp())
 }

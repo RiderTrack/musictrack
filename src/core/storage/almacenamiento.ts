@@ -35,6 +35,8 @@ export function leer<T>(clave: string, defecto: T): T {
 export function guardar(clave: string, valor: unknown): void {
   try {
     localStorage.setItem(claveCompleta(clave), JSON.stringify(valor))
+    // v0.15.0 — el auto-respaldo en la nube escucha este evento
+    window.dispatchEvent(new CustomEvent('mt:guardado', { detail: clave }))
   } catch (e) {
     console.warn('[almacenamiento] no se pudo guardar', clave, e)
   }
@@ -42,6 +44,11 @@ export function guardar(clave: string, valor: unknown): void {
 
 export function borrarClave(clave: string): void {
   localStorage.removeItem(claveCompleta(clave))
+  try {
+    window.dispatchEvent(new CustomEvent('mt:guardado', { detail: clave }))
+  } catch {
+    /* sin window — no pasa nada */
+  }
 }
 
 // ═══════════════════════════════════════════════════════════

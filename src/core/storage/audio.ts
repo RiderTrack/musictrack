@@ -44,6 +44,16 @@ function operar<T>(modo: IDBTransactionMode, fn: (tienda: IDBObjectStore) => IDB
 /** Guarda el MP3 (base64 sin prefijo) bajo el id de la canción. */
 export async function guardarAudio(id: string, base64: string, mime = 'audio/mp3'): Promise<void> {
   await operar('readwrite', (tienda) => tienda.put({ mime, base64, fecha: Date.now() } satisfies PistaAudio, id))
+  avisarCambio()
+}
+
+/** v0.15.0 — avisa al auto-respaldo que hay audio nuevo/borrado. */
+function avisarCambio(): void {
+  try {
+    window.dispatchEvent(new CustomEvent('mt:guardado', { detail: 'audio' }))
+  } catch {
+    /* sin window (tests) — no pasa nada */
+  }
 }
 
 /** v0.10.0 — guarda un BLOB (el MP3 de Suno bajado del CDN para
@@ -77,7 +87,38 @@ export async function leerAudio(id: string): Promise<string | null> {
 export async function borrarAudio(id: string): Promise<void> {
   try {
     await operar('readwrite', (tienda) => tienda.delete(id) as unknown as IDBRequest<undefined>)
+    avisarCambio()
   } catch {
     /* si ya no existía, no pasa nada */
   }
+}
+
+/** v0.15.0 — TODAS las pistas guardadas (para el respaldo en la nube). */
+export async function listarAudios(): Promise<{ id: string; mime: string; base64: string }[]> {
+  const db = await abrir()
+  return new Promise((resolver) => {
+    const salida: { id: string; mime: string; base64: string }[] = []
+    try {
+      const tx = db.transaction(TIENDA, 'readonly')
+      const pedido = tx.objectStore(TIENDA).openCursor()
+      pedido.onsuccess = () => {
+        const cursor = pedido.result
+        if (!cursor) return
+        const pista = cursor.value as PistaAudio | undefined
+        if (pista?.base64) salida.push({ id: String(cursor.key), mime: pista.mime || 'audio/mp3', base64: pista.base64 })
+        cursor.continue()
+      }
+      tx.oncomplete = () => {
+        db.close()
+        resolver(salida)
+      }
+      tx.onerror = () => {
+        db.close()
+        resolver(salida)
+      }
+    } catch {
+      db.close()
+      resolver(salida)
+    }
+  })
 }

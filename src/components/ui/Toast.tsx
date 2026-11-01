@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { CheckCircle2, Info, XCircle } from 'lucide-react'
 
 // ═══════════════════════════════════════════════════════════
@@ -21,6 +21,17 @@ interface CtxToasts {
 
 const Ctx = createContext<CtxToasts | null>(null)
 
+// ═══════════════════════════════════════════════
+// 🌉 Puente global (v0.15.0): el auto-respaldo en la nube vive
+// FUERA de React (core/sync/autoSync.ts) y igual necesita avisar
+// al usuario — toastGlobal() manda sin usar el hook.
+// ═══════════════════════════════════════════════
+let oyenteGlobal: ((mensaje: string, tipo?: TipoToast, duracionMs?: number) => void) | null = null
+
+export function toastGlobal(mensaje: string, tipo: TipoToast = 'info', duracionMs = 2600): void {
+  oyenteGlobal?.(mensaje, tipo, duracionMs)
+}
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])
 
@@ -29,6 +40,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setToasts((ts) => [...ts.slice(-2), { id, mensaje, tipo }])
     window.setTimeout(() => setToasts((ts) => ts.filter((t) => t.id !== id)), duracionMs)
   }, [])
+
+  useEffect(() => {
+    oyenteGlobal = mostrar
+    return () => {
+      oyenteGlobal = null
+    }
+  }, [mostrar])
 
   const valor = useMemo(() => ({ mostrar }), [mostrar])
 

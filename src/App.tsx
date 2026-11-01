@@ -15,6 +15,7 @@ import { ReproductorView } from '@/views/ReproductorView'
 import { BibliotecaView } from '@/views/BibliotecaView'
 import { AjustesView } from '@/views/AjustesView'
 import { arranqueNativo } from '@/core/natives/plataforma'
+import { iniciarAutoSync } from '@/core/sync/autoSync'
 import { pedirPermisoNotificaciones } from '@/core/notificaciones/notificaciones'
 import { iniciarSeguimientoSuno } from '@/core/ai/seguimiento'
 import type { PestannaId } from '@/types'
@@ -50,6 +51,7 @@ function Contenido() {
     arranqueNativo()
     pedirPermisoNotificaciones()
     iniciarSeguimientoSuno()
+    iniciarAutoSync() // v0.15.0 — respaldo en la nube silencioso
   }, [])
 
   return (

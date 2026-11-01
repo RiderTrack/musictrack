@@ -1,0 +1,22 @@
+rules_version = '2';
+
+// ═══════════════════════════════════════════════════════════
+// 🔥 FIRESTORE — reglas de MusicTrack (v0.15.0)
+// Pegalas en: Firebase Console → Firestore Database → Reglas
+// Estructura que protege:
+//   musictrack_sync/{uid}            → meta del respaldo
+//   musictrack_sync/{uid}/trozos/{i} → pedazos del JSON
+// Regla de oro: SOLO el dueño del uid lee y escribe sus datos.
+// ═══════════════════════════════════════════════════════════
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /musictrack_sync/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+
+      match /trozos/{trozo} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+  }
+}
