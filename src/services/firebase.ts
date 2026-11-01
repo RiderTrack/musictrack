@@ -32,14 +32,15 @@ export interface ConfigFirebase {
   appId: string
 }
 
-/** Claves fijas de fábrica (vacías = se usa la de Ajustes). */
+/** Claves fijas de fábrica (v0.14.2 — proyecto musictrack-3b623 del
+ * usuario; si algún día se vacía, vuelve a mandar la de Ajustes). */
 const configArchivo: ConfigFirebase = {
-  apiKey: '',            // ← TU API KEY (opcional: también va en Ajustes)
-  authDomain: '',        // ← TU_PROYECTO.firebaseapp.com
-  projectId: '',         // ← TU_PROYECTO
-  storageBucket: '',     // ← TU_PROYECTO.appspot.com
-  messagingSenderId: '', // ← sender id
-  appId: '',             // ← app id
+  apiKey: 'AIzaSyBraxE4Ua4j1ekbo0nBu5w_IZ_lHWvlmyA',   // ← app Web (Firebase Console)
+  authDomain: 'musictrack-3b623.firebaseapp.com',
+  projectId: 'musictrack-3b623',
+  storageBucket: 'musictrack-3b623.firebasestorage.app',
+  messagingSenderId: '933357872708',
+  appId: '1:933357872708:web:3f1ac88489c05ce2d3fe11',
 }
 
 const CLAVE_STORAGE = `${APP.prefijoClaves}_firebase`
