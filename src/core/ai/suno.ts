@@ -251,6 +251,14 @@ const TRADUCCIONES_ESTILO: ReadonlyArray<readonly [RegExp, string]> = [
   [/cumbia amaz[óo]nica/gi, 'amazonian cumbia'],
   [/tecno-?cumbia/gi, 'tecno cumbia'],
   [/\bchicha\b/gi, 'peruvian chicha'],
+  // 🇵🇪 v0.15.1 — música criolla «rompevenas» (pedido de Rudy):
+  // vals, polca, marinera, festejo y jarana limeña
+  [/vals criollo/gi, 'peruvian waltz'],
+  [/polca criolla/gi, 'peruvian polka'],
+  [/marinera lime[ñn]a/gi, 'peruvian marinera'],
+  [/\bfestejo\b/gi, 'afro-peruvian festejo'],
+  [/jarana criolla/gi, 'peruvian jarana'],
+  [/serenata\b/gi, 'serenade'],
   [/balada romántica/gi, 'romantic ballad'],
   [/balada anime/gi, 'anime ballad'],
   [/\bbalada\b/gi, 'ballad'],
@@ -347,6 +355,9 @@ const TRADUCCIONES_ESTILO: ReadonlyArray<readonly [RegExp, string]> = [
   [/g[üu]iro\b/gi, 'guiro'],
   [/g[üu]ira\b/gi, 'guira'],
   [/caj[óo]n(?![a-záéíóúüñ])/gi, 'cajon drum'],
+  // 🇵🇪 v0.15.1 — percusión criolla y afroperuana
+  [/quijada/gi, 'jawbone'],
+  [/cajita\b/gi, 'cajita drum'],
   [/\btabla\b/gi, 'tabla drums'],
   [/tambores de guerra/gi, 'war drums'],
   [/tambores taiko/gi, 'taiko drums'],
@@ -403,6 +414,10 @@ const TRADUCCIONES_ESTILO: ReadonlyArray<readonly [RegExp, string]> = [
   [/[ée]pic[oa]s?\b/gi, 'epic'],
   [/agresiv[oa]s?\b/gi, 'aggressive'],
   [/alegre[s]?\b/gi, 'upbeat'],
+  // 🇵🇪 v0.15.1 — caracteres criollos
+  [/sentid[oa]s?\b/gi, 'soulful'],
+  [/picaresc[oa]s?\b/gi, 'playful'],
+  [/coquet[oa]s?\b/gi, 'flirtatious'],
   [/melanc[óo]lic[oa]s?\b/gi, 'melancholic'],
   [/romantiqu[íi]/gi, 'romantic'],
   [/rom[áa]ntic[oa]s?\b/gi, 'romantic'],

@@ -91,10 +91,17 @@ export interface Sesion {
 export const GENEROS_MUSICALES = [
   'Pop latino',
   'Balada romántica',
+  'Bolero',
+  'Serenata',
   'Reggaetón',
   'Trap latino',
   'Cumbia',
   'Cumbia peruana',
+  'Vals criollo',
+  'Polca criolla',
+  'Marinera limeña',
+  'Festejo',
+  'Jarana criolla',
   'Salsa',
   'Vallenato',
   'Bachata',
@@ -284,6 +291,40 @@ export const FAMILIAS_RECETAS: FamiliaRecetas[] = [
         etiqueta: 'Sonidera',
         detalle: 'sintetizadores, ecos y fiesta de barrio',
         estilo: 'cumbia, sintetizadores, güiro, timbales, coros, festiva, 100 bpm',
+      },
+    ],
+  },
+  {
+    // 🇵🇪 v0.15.1 — pedido de Rudy: música criolla «rompevenas»,
+    // la de jarana limeña: vals, polca, marinera y festejo
+    icono: '🎸',
+    titulo: 'Criolla',
+    nota: 'rompevenas: la jarana limeña de guitarras y cajón',
+    recetas: [
+      {
+        etiqueta: 'Vals criollo',
+        detalle: 'dos guitarras, cajón y voz sentida',
+        estilo: 'vals criollo, guitarras gemelas, cajón, palmadas, sentida, romántica, 100 bpm',
+      },
+      {
+        etiqueta: 'Polca criolla',
+        detalle: 'jarana ágil de guitarras y palmas',
+        estilo: 'polca criolla, guitarra española, cajón, palmadas, picaresca, festiva, 100 bpm',
+      },
+      {
+        etiqueta: 'Marinera limeña',
+        detalle: 'guitarras, cajón y palmas coquetas',
+        estilo: 'marinera limeña, guitarra española, cajón, palmadas, coqueta, 100 bpm',
+      },
+      {
+        etiqueta: 'Festejo',
+        detalle: 'cajón, quijada y alegría afroperuana',
+        estilo: 'festejo, cajón, quijada, guitarra española, alegre, 100 bpm',
+      },
+      {
+        etiqueta: 'Jarana clásica',
+        detalle: 'contrapunto de guitarras y cajón de reunión',
+        estilo: 'jarana criolla, guitarra española, cajón, palmadas, festiva, 100 bpm',
       },
     ],
   },
@@ -508,6 +549,36 @@ export const FAMILIAS_RECETAS: FamiliaRecetas[] = [
     ],
   },
   {
+    // ❤️ v0.15.1 — pedido de Rudy: sección romántica, con las
+    // canciones de UN solo instrumento (piano o guitarra) y el
+    // bolero clásico
+    icono: '❤️',
+    titulo: 'Romántica',
+    nota: 'de una voz y un piano al bolero clásico',
+    recetas: [
+      {
+        etiqueta: 'Piano y voz',
+        detalle: 'un solo piano y una voz desgarrada',
+        estilo: 'balada, piano, íntima, emotiva, 70 bpm',
+      },
+      {
+        etiqueta: 'Serenata de guitarra',
+        detalle: 'una sola guitarra y voz, bajo la ventana',
+        estilo: 'serenata, bolero, guitarra española, íntima, romántica, 80 bpm',
+      },
+      {
+        etiqueta: 'Bolero clásico',
+        detalle: 'requinto, bongó, maracas y cuerdas',
+        estilo: 'bolero, requinto, bongó, maracas, cuerdas, romántica, 80 bpm',
+      },
+      {
+        etiqueta: 'Balada con banda',
+        detalle: 'piano, sintetizadores y orquesta completa',
+        estilo: 'balada romántica, orquestal, piano, sintetizadores, dramática, 70 bpm',
+      },
+    ],
+  },
+  {
     icono: '🎛️',
     titulo: 'Electrónica',
     nota: 'del club al lo-fi',
@@ -624,9 +695,15 @@ export const GRUPOS_TAGS_ESTILO: { titulo: string; tags: string[] }[] = [
       'Tecno-cumbia',
       'Cumbia colombiana',
       'Chicha',
+      'Vals criollo',
+      'Polca criolla',
+      'Marinera',
+      'Festejo',
       'Salsa',
       'Merengue',
       'Bachata',
+      'Bolero',
+      'Serenata',
       'Vallenato',
       'Corrido',
       'Banda',
@@ -872,7 +949,7 @@ export const GRUPOS_INSTRUMENTOS_ESTILO: { titulo: string; tags: string[] }[] = 
     // 🥁 v0.14.0 — pedido del usuario: los instrumentos COMPLETOS
     // de la cumbia, la salsa y el merengue en un solo vistazo
     titulo: 'Percusión latina',
-    tags: ['Tumbadoras', 'Bongó', 'Güiro', 'Güira', 'Tambora', 'Maracas', 'Claves', 'Cajón', 'Cowbell', 'Guacharaca'],
+    tags: ['Tumbadoras', 'Bongó', 'Güiro', 'Güira', 'Tambora', 'Maracas', 'Claves', 'Cajón', 'Quijada', 'Cajita', 'Cowbell', 'Guacharaca'],
   },
   {
     // 🧑‍🤝‍🧑 el «coro» del usuario: personas cantando detrás del solista
@@ -1164,6 +1241,13 @@ export const ARTISTAS_REFERENCIA: Record<string, string[]> = {
   'Trap latino': ['Ozuna', 'Anuel AA', 'Bad Bunny'],
   Cumbia: ['Los Mirlos', 'Sonora Dinamita', 'Grupo 5', 'Agua Marina'],
   'Cumbia peruana': ['Grupo 5', 'Agua Marina', 'Corazón Serrano', 'Hermanos Yaipén', 'Armonía 10', 'Agua Bella', 'Los Mirlos'],
+  'Vals criollo': ['Chabuca Granda', 'Óscar Avilés', 'Arturo «Zambo» Cavero', 'Eva Ayllón', 'Los Morochucos'],
+  'Polca criolla': ['Los Morochucos', 'Óscar Avilés', 'Augusto Polo Álvarez', 'Eva Ayllón'],
+  'Marinera limeña': ['Óscar Avilés', 'Arturo «Zambo» Cavero', 'Eva Ayllón', 'Los Morochucos'],
+  Festejo: ['Perú Negro', 'Eva Ayllón', 'Nicomedes Santa Cruz'],
+  'Jarana criolla': ['Los Morochucos', 'Óscar Avilés', 'Augusto Polo Álvarez'],
+  Bolero: ['Trío Los Panchos', 'Lucho Gatica', 'Armando Manzanero', 'Eydie Gormé'],
+  Serenata: ['Trío Los Panchos', 'Lucho Gatica', 'Leo Marini'],
   Salsa: ['Marc Anthony', 'Celia Cruz', 'Héctor Lavoe', 'Rubén Blades', 'Grupo Niche', 'Willie Colón', 'Frankie Ruiz', 'Jerry Rivera'],
   Vallenato: ['Carlos Vives', 'Diomedes Díaz', 'Silvestre Dangond'],
   Bachata: ['Aventura', 'Romeo Santos', 'Prince Royce'],
