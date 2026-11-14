@@ -224,6 +224,15 @@ function pistasDesdeRespuesta(r: RespuestaSuno, tituloAlternativo: string): Pist
  * rechazar el pedido entero (créditos perdidos). */
 export const LIMITE_ESTILO_SUNO = 200
 
+/** v0.15.2 — tope de estilo SEGÚN EL MODELO (docs.sunoapi.org):
+ * V4 y más viejos aceptan 200; V4.5+, V5, V5_5 y toda la familia
+ * V6 aceptan 1000. El 200 fijo quedó de la época de V4 y recortaba
+ * los prompts largos (el vals criollo «bien peruano» de Rudy)
+ * sin avisar. */
+export function limiteEstiloSuno(modelo: string): number {
+  return /^(V6|V5|V4_5)/.test(modelo) ? 1000 : LIMITE_ESTILO_SUNO
+}
+
 /** v0.14.0 — DICCIONARIO DE FRONTERA COMPLETO. La lección de
  * v0.11.2 (las voces se mezclaban porque Suno se entrenó con tags
  * en INGLÉS) aplica a TODO el estilo, no solo a las voces: «tumba-
@@ -259,6 +268,12 @@ const TRADUCCIONES_ESTILO: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bfestejo\b/gi, 'afro-peruvian festejo'],
   [/jarana criolla/gi, 'peruvian jarana'],
   [/serenata\b/gi, 'serenade'],
+  [/m[úu]sica criolla/gi, 'peruvian criollo music'],
+  [/guitarra criolla/gi, 'criollo guitar'],
+  [/pe[ñn]a lime[ñn]a/gi, 'lima peña'],
+  [/nostalgia lime[ñn]a/gi, 'lima nostalgia'],
+  [/rockola/gi, 'jukebox'],
+  [/sutiles?\b/gi, 'subtle'],
   [/balada romántica/gi, 'romantic ballad'],
   [/balada anime/gi, 'anime ballad'],
   [/\bbalada\b/gi, 'ballad'],
@@ -524,7 +539,7 @@ const TRADUCCIONES_ESTILO: ReadonlyArray<readonly [RegExp, string]> = [
  * épocas también viajan en inglés canónico — así Suno captura
  * de verdad la esencia pedida (los instrumentos de la cumbia
  * peruana, el bajo slap del funk, el tempo ochentero…). */
-export function estiloParaSuno(estilo: string): string {
+export function estiloParaSuno(estilo: string, limite: number = LIMITE_ESTILO_SUNO): string {
   const e0 = estilo.trim()
   if (!e0) return e0
   const enMinusculas = e0.toLowerCase()
@@ -544,12 +559,12 @@ export function estiloParaSuno(estilo: string): string {
   // v0.14.0 — el resto del estilo también viaja en inglés: géneros,
   // instrumentos, energías, épocas y producción.
   e = TRADUCCIONES_ESTILO.reduce((texto, [busca, reemplazo]) => texto.replace(busca, reemplazo), e)
-  // tope de 200 del estilo: si el refuerzo no entró, se van
-  // soltando tags del FINAL (nunca el primero, que es el género
-  // principal) hasta que quepa entero.
-  if (e.length > LIMITE_ESTILO_SUNO) {
+  // tope del estilo según el modelo (200 en los viejos, 1000 en
+  // V4.5+/V5/V6): si el refuerzo no entró, se van soltando tags
+  // del FINAL (nunca el primero, que es el género principal).
+  if (e.length > limite) {
     const partes = e.split(',').map((p) => p.trim()).filter(Boolean)
-    while (partes.length > 1 && partes.join(', ').length > LIMITE_ESTILO_SUNO) partes.pop()
+    while (partes.length > 1 && partes.join(', ').length > limite) partes.pop()
     e = partes.join(', ')
   }
   return e
@@ -648,7 +663,7 @@ export async function generarMusica(
       // la entiende a medias y mezcla hombre y mujer; «female
       // vocals, solo female singer» sí lo respeta. Lo que se guarda
       // en la biblioteca queda en español, como siempre.
-      style: estiloParaSuno(op.estilo),
+      style: estiloParaSuno(op.estilo, limiteEstiloSuno(op.modelo)),
       title: op.titulo,
       customMode: true,
       instrumental: op.instrumental,
@@ -699,7 +714,7 @@ export async function extenderMusica(
       // v0.11.2 — misma frontera que generate: la voz pide en
       // español, Suno la recibe en inglés reforzado (para que la
       // continuación respete la MISMA voz que la canción original).
-      style: estiloParaSuno(op.estilo),
+      style: estiloParaSuno(op.estilo, limiteEstiloSuno(op.modelo)),
       title: op.titulo,
       instrumental: op.instrumental,
       // ⚠️ docs: el modelo debe ser el MISMO de la canción original

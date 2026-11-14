@@ -3,7 +3,7 @@ import { Bot, Check, Cloud, Database, Download, Eye, EyeOff, Info, KeyRound, Log
 import { APP } from '@/data/app'
 import { leerAjustes, leer, guardar, descargarRespaldo, importarRespaldo, contarClaves } from '@/core/storage/almacenamiento'
 import { respaldarNube, restaurarNube } from '@/core/sync/sync'
-import { preguntarIA } from '@/core/ai/claude'
+import { preguntarIA, traducirErrorClaude } from '@/core/ai/claude'
 import { consultarCreditos } from '@/core/ai/suno'
 import { probarLyria } from '@/core/ai/lyria'
 import { useTema } from '@/core/theme/TemaProvider'
@@ -65,14 +65,15 @@ export function AjustesView() {
     setProbandoIA(true)
     try {
       await preguntarIA({
-        token: ajustes.tokenIA,
+        token: ajustes.tokenIA.trim(),
         modelo: ajustes.modeloIA,
         mensajes: [{ rol: 'usuario', texto: 'Respondé únicamente: listo' }],
         maxTokens: 16,
       })
-      mostrar('¡IA conectada! 🎉', 'ok')
+      mostrar('¡IA conectada! 🎉 — el token y el modelo andan bien', 'ok', 4000)
     } catch (e) {
-      mostrar(e instanceof Error ? e.message : 'Falló la conexión', 'error', 4500)
+      // 🩹 v0.15.2 — error en criollo y con más aire para leerlo
+      mostrar(e instanceof Error ? traducirErrorClaude(e.message) : 'Falló la conexión', 'error', 7000)
     } finally {
       setProbandoIA(false)
     }

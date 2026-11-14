@@ -6,6 +6,7 @@ import { agregarCanciones, EVENTO_CANCIONES, leerCanciones } from '@/core/storag
 import {
   creditosRestantes,
   generarMusica,
+  limiteEstiloSuno,
   LIMITE_LETRA_SUNO,
   modeloSunoSoportaDuracion,
   recortarLetraParaSuno,
@@ -50,6 +51,25 @@ import {
 // ═══════════════════════════════════════════════════════════
 
 const CLAVE_LETRA_A_MUSICALIZAR = 'letraMusicalizar'
+
+// ═══════════════════════════════════════════════════════════
+// 🧬 v0.15.2 — PROMPT AVANZADO DE ESTILO (pedido de Rudy): su
+// vals criollo sonaba a ranchera mexicana porque el estilo corto
+// («vals criollo, cajón…») le deja a Suno demasiado margen. Este
+// es SU prompt, acomodado al tope de 1000 de V6 — un botón lo
+// precarga listo para generar.
+// ═══════════════════════════════════════════════════════════
+const PROMPT_CRIOLLO_EJEMPLO = [
+  'Traditional Peruvian música criolla, authentic Lima vals criollo with a nostalgic cantinero bolero feeling.',
+  'Old-school Peruvian rockola atmosphere, heartfelt and deeply melancholic.',
+  'Distinctive Peruvian waltz rhythm in 3/4, with subtle Afro-Peruvian syncopation.',
+  'Traditional criollo guitar with expressive melodic flourishes and bass bordoneos, Peruvian cajón, warm acoustic bass, melancholic accordion and subtle harp.',
+  'Raw, passionate male voice with expressive vibrato, emotional voice cracks, criollo phrasing and dramatic vocal cries.',
+  'Intimate, nostalgic and deeply Peruvian atmosphere, like an old neighborhood peña or cantina in Lima.',
+  'Catchy sing-along chorus, natural call-and-response and short instrumental interludes.',
+  'Authentic vintage Peruvian recording character.',
+  'IMPORTANT: Peruvian vals criollo, NOT Mexican ranchera. No mariachi, no trumpets, no guitarrón, no Mexican banda, no norteño, no ranchera vocal phrasing, no modern pop, no reggaeton, no electronic beats.',
+].join(' ')
 
 /** Chip del estudio de estilo (v0.7.0): mismo look para géneros,
  * energía, voz, instrumentos, tempo y producción. */
@@ -145,6 +165,10 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
   const [texto, setTexto] = useState('')
   const [titulo, setTitulo] = useState('')
   const [estilo, setEstilo] = useState('')
+  // 🧬 v0.15.2 — prompt avanzado: texto largo que REEMPLAZA el
+  // estilo simple al generar (mismo lugar para letras propias o
+  // de IA — lo que se musicaliza es lo que importa)
+  const [promptAvanzado, setPromptAvanzado] = useState('')
   // 🍱 v0.14.0 — familia de recetas activa en el estudio (Cumbia,
   // Salsa, Retro 80s/90s…): arranca en la que matchea el estilo
   // actual (si vino de una letra) o en la primera.
@@ -407,8 +431,13 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
     }
     const tituloLimpio = titulo.trim() || 'Mi canción'
     // 🎯 v0.9.1 — la esencia de los artistas se suma al estilo
-    // (tope 200 chars de Suno, sin repetir tags) y se avisa.
-    const inspirada = estiloConInspiracion(estilo.trim() || 'pop latino', artistas)
+    // (tope según el modelo, sin repetir tags) y se avisa.
+    // 🧬 v0.15.2 — el prompt avanzado (si hay) reemplaza el simple.
+    const inspirada = estiloConInspiracion(
+      promptAvanzado.trim() || estilo.trim() || 'pop latino',
+      artistas,
+      limiteEstiloSuno(ajustes.modeloSuno),
+    )
     const estiloLimpio = inspirada.estilo
     if (inspirada.agregados.length) {
       mostrar(
@@ -502,7 +531,8 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
     }
     const tituloLimpio = titulo.trim() || 'Mi canción'
     // 🎯 v0.9.1 — misma inspiración para Lyria (va en el prompt)
-    const inspirada = estiloConInspiracion(estilo.trim() || 'pop latino', artistas)
+    // 🧬 v0.15.2 — el prompt avanzado reemplaza el estilo simple
+    const inspirada = estiloConInspiracion(promptAvanzado.trim() || estilo.trim() || 'pop latino', artistas, 1000)
     const estiloLimpio = inspirada.estilo
     if (inspirada.agregados.length) {
       mostrar(
@@ -729,6 +759,9 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
             <div>
               <span className="mb-1 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">
                 Estilo — tocá las etiquetas de abajo o escribí lo que quieras
+                {promptAvanzado.trim() && (
+                  <span className="ml-1 font-normal text-acento">(🧬 el prompt avanzado lo reemplaza)</span>
+                )}
               </span>
               <div className="relative">
                 <input
@@ -750,6 +783,76 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                 )}
               </div>
             </div>
+
+            {/* 🧬 v0.15.2 — PROMPT AVANZADO (pedido de Rudy): para
+                sonidos MUY específicos que los chips no alcanzan a
+                describir — su vals criollo «bien peruano, nada de
+                ranchera», con instrumentos, ambiente y hasta qué NO
+                querés. Reemplaza el estilo simple al generar. */}
+            <GrupoPlegable
+              titulo="🧬 Prompt avanzado"
+              nota="estilo largo y detallado — reemplaza el simple"
+              activos={promptAvanzado.trim() ? 1 : 0}
+            >
+              <div className="space-y-2 p-3">
+                <p className="text-[11px] leading-relaxed text-neutral-500 dark:text-neutral-400">
+                  Para sonidos muy específicos (ej: vals criollo bien peruano, nada de ranchera). Pegá tu prompt completo —
+                  en inglés (recomendado) o español, que lo traduzco al enviar. Si está lleno, este viaja a Suno en lugar
+                  del estilo simple. Sirve igual con letras tuyas o de la IA.
+                </p>
+                <textarea
+                  value={promptAvanzado}
+                  onChange={(e) => setPromptAvanzado(e.target.value)}
+                  maxLength={1000}
+                  rows={7}
+                  placeholder={'Traditional Peruvian música criolla, authentic Lima vals criollo with a nostalgic cantinero bolero feeling…'}
+                  className="w-full resize-y rounded-xl border border-neutral-300 bg-transparent p-3 text-[12px] leading-relaxed outline-none transition-colors placeholder:text-neutral-400 focus:border-acento dark:border-neutral-700"
+                />
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span
+                    className={`text-[10px] font-semibold ${
+                      motor === 'suno' && promptAvanzado.length > limiteEstiloSuno(ajustes.modeloSuno)
+                        ? 'text-amber-600 dark:text-amber-400'
+                        : 'text-neutral-400'
+                    }`}
+                  >
+                    {promptAvanzado.length}/1000
+                    {motor === 'suno' && promptAvanzado.length > limiteEstiloSuno(ajustes.modeloSuno) && (
+                      <span className="ml-1">
+                        — tu modelo {modeloSunoBonito(ajustes.modeloSuno)} solo acepta{' '}
+                        {limiteEstiloSuno(ajustes.modeloSuno)}: pasate a V6 en Ajustes para usarlo entero
+                      </span>
+                    )}
+                  </span>
+                  <span className="flex gap-1.5">
+                    {promptAvanzado && (
+                      <button
+                        type="button"
+                        onClick={() => setPromptAvanzado('')}
+                        className="rounded-full border border-neutral-200 px-2.5 py-1 text-[10px] font-bold text-neutral-500 transition-colors hover:border-acento/60 hover:text-acento dark:border-neutral-700"
+                      >
+                        🧹 limpiar
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        vibrar()
+                        setPromptAvanzado(PROMPT_CRIOLLO_EJEMPLO)
+                      }}
+                      className="rounded-full border border-acento/40 bg-acento/10 px-2.5 py-1 text-[10px] font-bold text-acento transition-colors hover:border-acento"
+                    >
+                      🇵🇪 usar mi prompt criollo
+                    </button>
+                  </span>
+                </div>
+                {promptAvanzado.trim() && (
+                  <p className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                    ✓ Al generar se manda ESTE prompt (el estilo simple queda de lado)
+                  </p>
+                )}
+              </div>
+            </GrupoPlegable>
 
             {/* 🎛️ v0.9.0 — ESTUDIO DE ESTILO PLEGABLE (pedido del
                 usuario): géneros, energía, voz, instrumentos, tempo,

@@ -70,6 +70,30 @@ export async function preguntarIA(op: OpcionesIA): Promise<string> {
   })
 }
 
+/** v0.15.2 — traduce los errores típicos de la API a español claro
+ * y accionable. El bug de «Generar letra no funciona»: el error
+ * viajaba en inglés crudo en un toast de 4 segundos — fácil de
+ * perder y imposible de entender. Ahora se ve en criollo y queda
+ * fijo en pantalla hasta el próximo intento. */
+export function traducirErrorClaude(mensaje: string): string {
+  const m = mensaje.toLowerCase()
+  if (m.includes('failed to fetch') || m.includes('networkerror') || m.includes('load failed'))
+    return 'No pude conectarme con Claude — revisá tu internet y probá de nuevo'
+  if (m.includes('401') || m.includes('invalid x-api-key') || m.includes('authentication_error'))
+    return 'Tu token de Claude no sirve (inválido o vencido) — generá uno nuevo en console.anthropic.com → API Keys y pegalo en Ajustes'
+  if (m.includes('404') || m.includes('not_found_error'))
+    return 'Ese modelo de Claude ya no existe — elegí Haiku, Sonnet u Opus 4.5 en Ajustes'
+  if (m.includes('credit') || m.includes('balance') || m.includes('billing'))
+    return 'Tu cuenta de Anthropic se quedó sin créditos — cargá saldo en console.anthropic.com → Settings → Billing'
+  if (m.includes('429') || m.includes('rate_limit'))
+    return 'Fuiste muy rápido o hay un límite de la API — esperá unos segundos y volvé a intentar'
+  if (m.includes('529') || m.includes('overloaded') || m.includes('overload_error'))
+    return 'Claude está saturado ahora mismo — esperá un momento y reintentá'
+  if (m.includes('400') || m.includes('invalid_request'))
+    return 'Pedido rechazado — revisá que el token esté completo (empieza con sk-ant-) y sin espacios'
+  return mensaje
+}
+
 function inferirMime(dataUrl: string): 'image/jpeg' | 'image/png' | 'image/webp' {
   if (dataUrl.includes('image/png')) return 'image/png'
   if (dataUrl.includes('image/webp')) return 'image/webp'

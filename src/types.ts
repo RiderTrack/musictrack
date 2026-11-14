@@ -303,8 +303,9 @@ export const FAMILIAS_RECETAS: FamiliaRecetas[] = [
     recetas: [
       {
         etiqueta: 'Vals criollo',
-        detalle: 'dos guitarras, cajón y voz sentida',
-        estilo: 'vals criollo, guitarras gemelas, cajón, palmadas, sentida, romántica, 100 bpm',
+        detalle: 'guitarras gemelas, cajón, contrabajo y arpa — peña limeña',
+        estilo:
+          'vals criollo, guitarras gemelas, cajón, contrabajo, arpa sutil, ambiente de peña limeña, nostalgia limeña, sentida, romántica, 100 bpm',
       },
       {
         etiqueta: 'Polca criolla',
@@ -1315,10 +1316,14 @@ export function descriptoresDeArtistas(artistas: string): string[] {
 }
 
 /** Suma la esencia de los artistas a un estilo existente: sin
- * repetir tags y sin pasarse del tope de 200 caracteres de Suno.
- * Devuelve el estilo final y qué se agregó (para avisarle al
- * usuario con un toast, no en silencio). */
-export function estiloConInspiracion(estilo: string, artistas?: string): { estilo: string; agregados: string[] } {
+ * repetir tags y sin pasarse del tope (200 en modelos viejos,
+ * 1000 en V4.5+/V5/V6 — v0.15.2). Devuelve el estilo final y qué
+ * se agregó (para avisarle al usuario con un toast, no en silencio). */
+export function estiloConInspiracion(
+  estilo: string,
+  artistas?: string,
+  limite: number = 200,
+): { estilo: string; agregados: string[] } {
   if (!artistas?.trim()) return { estilo, agregados: [] }
   const partes = estilo
     .split(',')
@@ -1327,7 +1332,7 @@ export function estiloConInspiracion(estilo: string, artistas?: string): { estil
   const agregados: string[] = []
   for (const tag of descriptoresDeArtistas(artistas)) {
     if (partes.some((p) => p.toLowerCase() === tag.toLowerCase()) || agregados.includes(tag)) continue
-    if ([...partes, ...agregados, tag].join(', ').length > 200) break
+    if ([...partes, ...agregados, tag].join(', ').length > limite) break
     agregados.push(tag)
   }
   return { estilo: [...partes, ...agregados].join(', '), agregados }

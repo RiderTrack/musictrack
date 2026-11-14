@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Disc3, FileDown, Gift, PenLine, RefreshCw, Save, Share2, Sparkles, Wand2 } from 'lucide-react'
 import { leerAjustes, leer, guardar } from '@/core/storage/almacenamiento'
-import { preguntarIA } from '@/core/ai/claude'
+import { preguntarIA, traducirErrorClaude } from '@/core/ai/claude'
 import { descargarLetraPdf } from '@/core/exportar/pdfLetra'
 import { Boton } from '@/components/ui/Boton'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -68,6 +68,10 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
   const [letra, setLetra] = useState<Letra | null>(null)
   const [cargando, setCargando] = useState(false)
   const [guardada, setGuardada] = useState(false)
+  // 🩹 v0.15.2 — el error de la IA queda FIJO en pantalla (el toast
+  // de 4 segundos se perdía): hasta que Rudy no lo lea y decida
+  // qué hacer (revisar token, esperar, cambiar modelo), no se va.
+  const [errorGenerar, setErrorGenerar] = useState('')
 
   // 🤖 v0.7.0 — modelo de IA elegible desde acá (se persiste en
   // Ajustes, así Crear y Ajustes siempre muestran lo mismo).
@@ -154,10 +158,11 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
     }
     vibrar()
     setCargando(true)
+    setErrorGenerar('')
     try {
       const est = ESTRUCTURAS.find((e) => e.id === estructura)
       const respuesta = await preguntarIA({
-        token: ajustes.tokenIA,
+        token: ajustes.tokenIA.trim(),
         modelo: modeloIA,
         sistema: SISTEMA_LETRISTA,
         maxTokens: 2000,
@@ -192,7 +197,11 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
       setGuardada(false)
       mostrar('¡Letra lista! 🎵', 'ok')
     } catch (e) {
-      mostrar(e instanceof Error ? e.message : 'Falló la IA', 'error', 4000)
+      // 🩹 v0.15.2 — error en criollo, en toast largo Y en panel
+      // fijo debajo del botón (el bug de «no genera nada»)
+      const msg = e instanceof Error ? traducirErrorClaude(e.message) : 'Falló la IA'
+      setErrorGenerar(msg)
+      mostrar(msg, 'error', 6500)
     } finally {
       setCargando(false)
     }
@@ -561,6 +570,23 @@ export function CrearView({ irA }: { irA: (p: PestannaId) => void }) {
           <Boton className="w-full" icono={<Wand2 className="h-4 w-4" />} onClick={generar} cargando={cargando}>
             {cargando ? 'Componiendo…' : 'Generar letra'}
           </Boton>
+
+          {/* 🩹 v0.15.2 — panel de error FIJO: explica qué pasó y
+              tiene atajo directo a Ajustes para arreglar el token */}
+          {errorGenerar && !cargando && (
+            <div className="rounded-xl border border-red-300 bg-red-50 p-3 dark:border-red-900/60 dark:bg-red-950/40">
+              <p className="text-[12px] leading-relaxed text-red-700 dark:text-red-300">
+                <b>No pude generar la letra.</b> {errorGenerar}
+              </p>
+              <button
+                type="button"
+                onClick={() => irA('ajustes')}
+                className="mt-2 text-[11px] font-bold text-red-700 underline underline-offset-2 dark:text-red-300"
+              >
+                Revisar mi token en Ajustes →
+              </button>
+            </div>
+          )}
         </div>
       </section>
 
