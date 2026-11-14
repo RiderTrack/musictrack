@@ -267,6 +267,27 @@ const TRADUCCIONES_ESTILO: ReadonlyArray<readonly [RegExp, string]> = [
   [/marinera lime[ñn]a/gi, 'peruvian marinera'],
   [/\bfestejo\b/gi, 'afro-peruvian festejo'],
   [/jarana criolla/gi, 'peruvian jarana'],
+  // 🇵🇪 v0.16.0 — FASE 13 (pedido de Rudy): las movidas (alcatraz,
+  // landó, tondero) y el bolero cantinero de las canciones
+  // antiguas. OJO con alcatraz: sin esta regla Suno lo lee como
+  // LA CÁRCEL de San Francisco. «garra afroperuana» va ANTES que
+  // «afroperuano» para que no se la pise (reglas más específicas
+  // primero, como siempre en este diccionario).
+  [/alcatraz/gi, 'afro-peruvian alcatraz'],
+  // ⚠️ «landó»: \b NO sirve con la ó acentuada (JS la trata como
+  // no-palabra) — se cuida el borde con grupos, para no tocar
+  // «bailando» ni «Orlando».
+  [/(^|[^a-zà-ÿ])land[óo](?![a-zà-ÿ])/gi, '$1afro-peruvian lando'],
+  [/tondero/gi, 'peruvian tondero'],
+  [/bolero cantinero/gi, 'old-school barroom bolero'],
+  [/\bcantiner[oa]s?\b/gi, 'cantina-style'],
+  [/\bantigu[oa]s?\b/gi, 'old-school'],
+  [/garra afroperuana/gi, 'afro-peruvian soul power'],
+  [/afroperuan[oa]s?\b/gi, 'afro-peruvian'],
+  [/coste[ñn][oa]s?\b/gi, 'peruvian coastal'],
+  [/tr[íi]o criollo/gi, 'criollo trio'],
+  [/tr[íi]o bolero/gi, 'bolero trio'],
+  [/d[ée]cimas?\b/gi, 'spanish decima poetry'],
   [/serenata\b/gi, 'serenade'],
   [/m[úu]sica criolla/gi, 'peruvian criollo music'],
   [/guitarra criolla/gi, 'criollo guitar'],
@@ -305,6 +326,9 @@ const TRADUCCIONES_ESTILO: ReadonlyArray<readonly [RegExp, string]> = [
   [/guitarras sucias/gi, 'dirty guitars'],
   [/guitarras grandes/gi, 'big guitars'],
   [/guitarras gemelas/gi, 'twin guitars'],
+  // 🇵🇪 v0.16.0 — FASE 13: la guitarra del criollismo
+  [/bordoneos/gi, 'syncopated guitar bass lines'],
+  [/requinto/gi, 'requinto guitar'],
   [/guitarras melodiosas/gi, 'melodic guitars'],
   [/muro de guitarras/gi, 'wall of guitars'],
   [/muros de guitarra/gi, 'wall of guitars'],
@@ -413,6 +437,21 @@ const TRADUCCIONES_ESTILO: ReadonlyArray<readonly [RegExp, string]> = [
   [/voz rasposa/gi, 'raspy vocals'],
   [/voz grave/gi, 'deep vocals'],
   [/voz de tenor/gi, 'tenor vocals'],
+  // 🎤 v0.16.0 — FASE 13: las voces criollas (perfiles de voz y
+  // retratos de artistas). Lo específico va primero: «dinámica
+  // rompevenas» antes que «rompevenas» a secas.
+  [/voz de contralta/gi, 'contralto female vocals'],
+  [/voz de bar[íi]tono/gi, 'baritone male vocals'],
+  [/\brasgada\b/gi, 'raspy'],
+  [/quej[íi]o/gi, 'sobbing soulful delivery'],
+  [/melism[áa]tic[oa]s?\b/gi, 'melismatic'],
+  [/bolerista\b/gi, 'bolero crooner'],
+  [/quiebres emotivos/gi, 'emotional vocal breaks'],
+  [/fraseo libre/gi, 'free phrasing'],
+  [/voz quebrada/gi, 'emotional voice cracks'],
+  [/dinámica rompevenas/gi, 'heart-wrenching dynamics'],
+  [/cl[íi]max agudo/gi, 'soaring high climax'],
+  [/rompevenas\b/gi, 'heart-wrenching'],
   [/voz de terciopelo/gi, 'velvet vocals'],
   [/voz desgarrada/gi, 'heartbroken vocals'],
   [/voz poderosa/gi, 'powerful vocals'],
@@ -439,6 +478,14 @@ const TRADUCCIONES_ESTILO: ReadonlyArray<readonly [RegExp, string]> = [
   [/oscur[oa]s?\b/gi, 'dark'],
   [/nost[áa]lgic[oa]s?\b/gi, 'nostalgic'],
   [/dram[áa]tic[oa]s?\b/gi, 'dramatic'],
+  // 🎭 v0.16.0 — FASE 13: carácter criollo y bolero de barra
+  [/majestuos[oa]s?\b/gi, 'majestic'],
+  [/pausad[oa]s?\b/gi, 'unhurried'],
+  [/c[áa]lidas?\b/gi, 'warm'],
+  [/elegantes?\b/gi, 'elegant'],
+  [/fren[ée]tic[oa]s?\b/gi, 'frantic'],
+  [/hipn[óo]tic[oa]s?\b/gi, 'hypnotic'],
+  [/medio tiempo/gi, 'half-time'],
   [/motivacional/gi, 'motivational'],
   [/triunfante/gi, 'triumphant'],
   [/festiv[oa]s?\b/gi, 'festive'],
@@ -539,6 +586,28 @@ const TRADUCCIONES_ESTILO: ReadonlyArray<readonly [RegExp, string]> = [
  * épocas también viajan en inglés canónico — así Suno captura
  * de verdad la esencia pedida (los instrumentos de la cumbia
  * peruana, el bajo slap del funk, el tempo ochentero…). */
+/** 🚫 v0.16.0 — FASE 13: ¿el estilo es criolla? Alimenta el
+ * escudo anti-ranchera — matchea en español (chips, recetas,
+ * retratos) o en inglés (prompt avanzado pegado en inglés). */
+export function esEstiloCriolla(estilo: string): boolean {
+  return /crioll|marinera|festejo|jarana|alcatraz|land[óo]|tondero|cantiner[oa]|peruvian waltz|peruvian polka|peruvian marinera|afro-peruvian|peruvian jarana|peruvian tondero|peruvian coastal/i.test(
+    estilo,
+  )
+}
+
+/** 🚫 v0.16.0 — ESCUDO ANTI-RANCHERA (pedido de Rudy: Suno
+ * confundía su criolla con ranchera mexicana). La API de V6 tiene
+ * `negativeTags` (docs.sunoapi.org: hasta 1000 caracteres, solo
+ * custom mode) — lo que NO se quiere oír. Mejor que negarlo dentro
+ * del estilo, donde nombrar «mariachi» hasta lo invoca. Devuelve
+ * undefined si no aplica: estilo no criolla o modelo viejo (el
+ * parámetro no existe ahí y mandarlo rompería el pedido). */
+export function negativosAntiRanchera(estilo: string, modelo: string): string | undefined {
+  if (!esEstiloCriolla(estilo)) return undefined
+  if (!/^V6/.test(modelo)) return undefined
+  return 'mariachi, trumpets, guitarron, banda sinaloense, norteno, tuba, reggaeton'
+}
+
 export function estiloParaSuno(estilo: string, limite: number = LIMITE_ESTILO_SUNO): string {
   const e0 = estilo.trim()
   if (!e0) return e0
@@ -668,6 +737,13 @@ export async function generarMusica(
       customMode: true,
       instrumental: op.instrumental,
       model: op.modelo,
+      // 🚫 v0.16.0 — FASE 13: escudo anti-ranchera. Si el estilo es
+      // criolla y el modelo es V6, viaja la lista de lo que NO se
+      // quiere oír (mariachi, guitarrón…). En modelos viejos el
+      // parámetro no existe: ni se manda.
+      ...(negativosAntiRanchera(op.estilo, op.modelo)
+        ? { negativeTags: negativosAntiRanchera(op.estilo, op.modelo) }
+        : {}),
       ...(duracion ? { duration: duracion } : {}),
       callBackUrl: CALLBACK_URL,
     }),

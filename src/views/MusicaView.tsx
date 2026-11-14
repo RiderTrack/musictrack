@@ -5,10 +5,12 @@ import { guardarAudio } from '@/core/storage/audio'
 import { agregarCanciones, EVENTO_CANCIONES, leerCanciones } from '@/core/storage/canciones'
 import {
   creditosRestantes,
+  esEstiloCriolla,
   generarMusica,
   limiteEstiloSuno,
   LIMITE_LETRA_SUNO,
   modeloSunoSoportaDuracion,
+  negativosAntiRanchera,
   recortarLetraParaSuno,
   type MotorSuno,
 } from '@/core/ai/suno'
@@ -25,6 +27,7 @@ import {
   GRUPOS_TAGS_ESTILO,
   INSTRUMENTOS_ESTILO,
   MODELOS_LYRIA,
+  PERFILES_VOZ_ESTILO,
   PRODUCCION_ESTILO,
   TEMPOS_ESTILO,
   VOZ_CANTANTE,
@@ -186,6 +189,13 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
     .filter(Boolean)
   const esenciaInspiracion = descriptoresDeArtistas(artistas)
   const sinRetrato = artistasEscritos.filter((a) => !retratoDeArtista(a))
+  // 🚫 v0.16.0 — FASE 13: escudo anti-ranchera. Se calcula sobre
+  // lo que REALMENTE va a viajar (el prompt avanzado manda sobre
+  // el estilo simple) y solo con Suno (Lyria no tiene negativeTags).
+  const estiloPrevisto = promptAvanzado.trim() || estilo.trim()
+  const criollaDetectada = esEstiloCriolla(estiloPrevisto)
+  const negativosPrevistos =
+    motor === 'suno' ? negativosAntiRanchera(estiloPrevisto, ajustes.modeloSuno) : undefined
   const [instrumental, setInstrumental] = useState(false)
   const [cargando, setCargando] = useState(false)
 
@@ -346,6 +356,26 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
       return
     }
     setEstilo([...sinTempo, tag].join(', '))
+  }
+
+  // 🎤 v0.16.0 — PERFIL DE VOZ CRIOLLA (FASE 13, pedido de Rudy):
+  // exclusivo como el tempo — uno solo a la vez, tocar el activo lo
+  // apaga. Los tags del perfil viajan al estilo y la frontera de
+  // Suno los traduce (evocan el tipo de voz, no imitan a nadie).
+  const TAGS_PERFILES_VOZ: string[] = PERFILES_VOZ_ESTILO.flatMap((p) => p.tags)
+  const perfilVozActivo = PERFILES_VOZ_ESTILO.find((p) => p.tags.every((t) => partesEstilo.includes(t)))
+  function fijarPerfilVoz(p: (typeof PERFILES_VOZ_ESTILO)[number]) {
+    vibrar()
+    const partes = estilo
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+    const sinPerfil = partes.filter((s) => !TAGS_PERFILES_VOZ.includes(s.toLowerCase()))
+    if (perfilVozActivo === p) {
+      setEstilo(sinPerfil.join(', '))
+      return
+    }
+    setEstilo([...sinPerfil, ...p.tags].join(', '))
   }
 
   // 🎚️ v0.9.0 — PRODUCCIÓN. La estrella: «A capela» APAGA todos
@@ -784,6 +814,19 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
               </div>
             </div>
 
+            {/* 🚫 v0.16.0 — FASE 13: aviso del escudo anti-ranchera.
+                Visible SIEMPRE que el estilo que va a viajar sea
+                criolla: con V6 confirma qué se va a excluir; con
+                modelo viejo explica por qué no puede (y cómo
+                activarlo). */}
+            {motor === 'suno' && criollaDetectada && (
+              <p className="text-[10px] leading-relaxed text-amber-600 dark:text-amber-400">
+                {negativosPrevistos
+                  ? '🚫 Escudo anti-ranchera activo: a este estilo le voy a pedir a Suno que NO use mariachi, trompetas, guitarrón, banda sinaloense, norteño, tuba ni reggaetón.'
+                  : '⚠️ Tu estilo es criolla, pero el escudo anti-ranchera (excluir mariachi y trompetas) necesita el modelo V6 — cambialo en Ajustes.'}
+              </p>
+            )}
+
             {/* 🧬 v0.15.2 — PROMPT AVANZADO (pedido de Rudy): para
                 sonidos MUY específicos que los chips no alcanzan a
                 describir — su vals criollo «bien peruano, nada de
@@ -954,6 +997,40 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                     </button>
                   )
                 })}
+              </GrupoPlegable>
+
+              {/* 🎤 v0.16.0 — FASE 13 (pedido de Rudy): perfiles de
+                  voz criolla. Suno no acepta nombres de artistas
+                  reales en el estilo (los filtra) ni clona su voz:
+                  estos chips describen el TIPO de voz de cada
+                  leyenda — lo que sí puede evocar. El «Rompevenas»
+                  trae la dinámica que Rudy describía: entonaciones
+                  altas y la voz que se hace más fuerte al final. */}
+              <GrupoPlegable
+                titulo="🎤 Voz criolla"
+                nota="uno solo — evocan el tipo de voz, no imitan"
+                activos={perfilVozActivo ? 1 : 0}
+              >
+                {PERFILES_VOZ_ESTILO.map((p) => {
+                  const activo = perfilVozActivo === p
+                  return (
+                    <button
+                      key={p.etiqueta}
+                      type="button"
+                      title={p.evoca}
+                      aria-pressed={activo}
+                      onClick={() => fijarPerfilVoz(p)}
+                      className={claseChip(activo)}
+                    >
+                      {activo ? `✓ ${p.etiqueta}` : p.etiqueta}
+                    </button>
+                  )
+                })}
+                {perfilVozActivo && (
+                  <p className="w-full text-[10px] leading-relaxed text-neutral-400">
+                    {perfilVozActivo.evoca} — estos toques viajan con el estilo, traducidos al inglés que Suno entiende
+                  </p>
+                )}
               </GrupoPlegable>
 
               {GRUPOS_INSTRUMENTOS_ESTILO.map((g) => (

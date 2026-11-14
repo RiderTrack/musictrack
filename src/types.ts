@@ -102,6 +102,12 @@ export const GENEROS_MUSICALES = [
   'Marinera limeña',
   'Festejo',
   'Jarana criolla',
+  // 🇵🇪 v0.16.0 — FASE 13 (pedido de Rudy): los estilos movidos
+  // de la criolla y el bolero cantinero de las canciones antiguas
+  'Alcatraz',
+  'Landó',
+  'Tondero',
+  'Bolero cantinero',
   'Salsa',
   'Vallenato',
   'Bachata',
@@ -326,6 +332,29 @@ export const FAMILIAS_RECETAS: FamiliaRecetas[] = [
         etiqueta: 'Jarana clásica',
         detalle: 'contrapunto de guitarras y cajón de reunión',
         estilo: 'jarana criolla, guitarra española, cajón, palmadas, festiva, 100 bpm',
+      },
+      // 🇵🇪 v0.16.0 — FASE 13 (pedido de Rudy): las «movidas»
+      // (alcatraz, landó, tondero) y el bolero cantinero de las
+      // canciones antiguas
+      {
+        etiqueta: 'Alcatraz',
+        detalle: 'ritmo afro fugaz de pareja y pañuelo encendido',
+        estilo: 'alcatraz, afroperuano frenético, cajón, quijada, guitarra española, palmadas, festiva, 150 bpm',
+      },
+      {
+        etiqueta: 'Landó',
+        detalle: 'medio tiempo hipnótico y sensual',
+        estilo: 'landó, afroperuano hipnótico, cajón, quijada, guitarra española, sensual, 90 bpm',
+      },
+      {
+        etiqueta: 'Tondero',
+        detalle: 'alegría costera del norte, palomita y palmas',
+        estilo: 'tondero, costeño alegre, guitarras gemelas, cajón, palmas, festiva, 120 bpm',
+      },
+      {
+        etiqueta: 'Bolero cantinero',
+        detalle: 'de barra y peña — requinto, despecho y canciones antiguas',
+        estilo: 'bolero cantinero, requinto, guitarra española, nostálgica, sentida, 80 bpm',
       },
     ],
   },
@@ -1011,6 +1040,54 @@ export const TEMPOS_ESTILO = [
   { etiqueta: 'Extrema · blast', tag: '200 bpm' },
 ] as const
 
+/** 🎤 v0.16.0 — PERFILES DE VOZ CRIOLLA (FASE 13, pedido de Rudy:
+ * «puede imitar las voces de cantantes peruanos?»). Suno NO acepta
+ * nombres de artistas reales en el estilo (los filtra) ni clonar
+ * su voz — pero sí entiende una DESCRIPCIÓN del tipo de voz. Cada
+ * perfil evoca a una leyenda sin nombrarla: sus tags se suman al
+ * estilo y viajan traducidos a la frontera de Suno. Es EXCLUSIVO
+ * (uno solo a la vez, como el tempo) y compatible con el «Rompe-
+ * venas», que describe la DINÁMICA (íntima → clímax agudo), no el
+ * timbre — por eso puede combinarse… pero para simplificar la UI
+ * también es parte del mismo grupo exclusivo. */
+export const PERFILES_VOZ_ESTILO = [
+  {
+    etiqueta: 'Contralta con quejío',
+    evoca: 'grave, rasgada y llorada — evoca a Lucha Reyes',
+    tags: ['voz de contralta', 'rasgada', 'quejío', 'dramática'],
+  },
+  {
+    etiqueta: 'Mezzo con garra',
+    evoca: 'potente, con alma afroperuana — evoca a Eva Ayllón',
+    tags: ['voz femenina', 'garra afroperuana', 'melismática', 'sentida'],
+  },
+  {
+    etiqueta: 'Tenor bolerista',
+    evoca: 'romántico, con quiebres — evoca a Lucho Barrios',
+    tags: ['voz de tenor', 'bolerista', 'quiebres emotivos'],
+  },
+  {
+    etiqueta: 'Dulce y sentida',
+    evoca: 'clara, íntima y sincera — evoca a Carmencita Lara',
+    tags: ['voz femenina', 'dulce', 'íntima', 'sentida'],
+  },
+  {
+    etiqueta: 'Barítono señorial',
+    evoca: 'cálido, majestuoso y pausado — evoca al Zambo Cavero',
+    tags: ['voz de barítono', 'cálida', 'majestuosa', 'pausada'],
+  },
+  {
+    etiqueta: 'Elegante y poética',
+    evoca: 'de fraseo libre y contenido — evoca a Chabuca Granda',
+    tags: ['voz femenina', 'elegante', 'fraseo libre'],
+  },
+  {
+    etiqueta: 'Rompevenas · dinámica',
+    evoca: 'empieza íntima y estalla en un clímax agudo — la dinámica del vals',
+    tags: ['dinámica rompevenas', 'clímax agudo', 'voz quebrada'],
+  },
+]
+
 // ═══════════════════════════════════════════════════════════
 // 🎯 v0.9.1 — INSPIRACIÓN POR ARTISTAS. El usuario escribe
 // «Stratovarius, Luca Turilli» y la app captura SU ESENCIA:
@@ -1230,6 +1307,32 @@ export const DICCIONARIO_ARTISTAS: Record<string, string> = {
   kavinsky: 'synthwave nocturno, sintetizadores, cine de autos',
   'the midnight': 'synthwave con saxofón, nostálgico, neón',
   'carpenter brut': 'darksynth agresivo, sintetizadores pesados, synthwave oscuro',
+  // 🇵🇪 v0.16.0 — FASE 13 (pedido de Rudy: «imitar las voces de
+  // cantantes peruanos»). Suno no acepta nombres reales: viaja el
+  // RETRATO del tipo de voz, lo que sí puede evocar. Los tags van
+  // separados por comas para que la frontera los traduce uno a uno.
+  'eva ayllon': 'voz femenina, garra afroperuana, melismática, sentida',
+  'lucho barrios': 'voz de tenor, bolerista, quiebres emotivos, romántica',
+  'lucha reyes': 'voz de contralta, rasgada, quejío, dramática',
+  'carmencita lara': 'voz femenina, dulce, íntima, sentida',
+  'arturo «zambo» cavero': 'voz de barítono, cálida, majestuosa, pausada',
+  'zambo cavero': 'voz de barítono, cálida, majestuosa, pausada',
+  'chabuca granda': 'voz femenina, elegante, fraseo libre',
+  'oscar aviles': 'guitarra criolla, guitarras gemelas, bordoneos',
+  'los morochucos': 'trío criollo, guitarras gemelas, coros, rompevenas',
+  'peru negro': 'afroperuano, cajón, quijada, coros respondones',
+  'nicomedes santa cruz': 'décimas, afroperuano, cajón',
+  'caitro soto': 'cajón, cajita, afroperuano',
+  'susana baca': 'voz femenina, íntima, afroperuana, elegante',
+  'rafael otero': 'tondero, costeño, guitarras, palmas',
+  'los hermanos zanartu': 'tondero, guitarras, palmas, festiva',
+  'trio los panchos': 'trío bolero, requinto, armonías vocales',
+  'lucho gatica': 'voz de barítono, bolerista, romántica',
+  'daniel santos': 'voz de tenor, bolerista, cantinero, dramática',
+  'julio jaramillo': 'voz de tenor, bolerista, nostálgica, quejío',
+  'augusto polo alvarez': 'vals criollo, festiva, guitarras gemelas',
+  'armando manzanero': 'bolero, piano, romántica, pausada',
+  'eydie gorme': 'voz femenina, bolerista, dulce, íntima',
 }
 
 /** Sugerencias de artistas por género (los chips de Crear):
@@ -1247,6 +1350,11 @@ export const ARTISTAS_REFERENCIA: Record<string, string[]> = {
   'Marinera limeña': ['Óscar Avilés', 'Arturo «Zambo» Cavero', 'Eva Ayllón', 'Los Morochucos'],
   Festejo: ['Perú Negro', 'Eva Ayllón', 'Nicomedes Santa Cruz'],
   'Jarana criolla': ['Los Morochucos', 'Óscar Avilés', 'Augusto Polo Álvarez'],
+  // 🇵🇪 v0.16.0 — FASE 13: las movidas y el bolero cantinero
+  Alcatraz: ['Perú Negro', 'Caitro Soto', 'Nicomedes Santa Cruz'],
+  Landó: ['Susana Baca', 'Eva Ayllón', 'Perú Negro'],
+  Tondero: ['Rafael Otero', 'Los Hermanos Zañartu', 'Susana Baca'],
+  'Bolero cantinero': ['Lucho Barrios', 'Daniel Santos', 'Julio Jaramillo'],
   Bolero: ['Trío Los Panchos', 'Lucho Gatica', 'Armando Manzanero', 'Eydie Gormé'],
   Serenata: ['Trío Los Panchos', 'Lucho Gatica', 'Leo Marini'],
   Salsa: ['Marc Anthony', 'Celia Cruz', 'Héctor Lavoe', 'Rubén Blades', 'Grupo Niche', 'Willie Colón', 'Frankie Ruiz', 'Jerry Rivera'],
