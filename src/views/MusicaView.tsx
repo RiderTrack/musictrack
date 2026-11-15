@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Disc3, Library, Music2, Piano, RefreshCw, Rocket, Wand2 } from 'lucide-react'
-import { leerAjustes, leer, borrarClave } from '@/core/storage/almacenamiento'
+import { leerAjustes, leer, guardar, borrarClave } from '@/core/storage/almacenamiento'
 import { guardarAudio } from '@/core/storage/audio'
 import { agregarCanciones, EVENTO_CANCIONES, leerCanciones } from '@/core/storage/canciones'
 import {
@@ -241,8 +241,22 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
   // ⏱️ v0.8.0 — DURACIÓN: 'auto' (Suno decide, como siempre),
   // 'letra' (se calcula según la letra para que alcance entera —
   // el fix del corte) o un número fijo de segundos (2 a 6 min).
+  // ⏳ v0.19.0 — FASE 16: la API acepta hasta 6:00 POR PEDIDO (tope
+  // duro de sunoapi.org, verificado en su doc) — lo que falte más
+  // allá de eso lo encadena la app sola (ver toggle de abajo).
   const [duracion, setDuracion] = useState<'auto' | 'letra' | number>('letra')
   const estimacion = duracion === 'letra' && !instrumental ? estimarDuracion(texto) : null
+  // ⏳ v0.19.0 — FASE 16 (pedido de Rudy): CANCIÓN COMPLETA — sin
+  // tener que estar tocando el ⏩ Extender. Queda guardado como
+  // preferencia (clave musica_completa), como los demás ajustes
+  // de la pestaña.
+  const [completa, setCompleta] = useState(() => leer('musica_completa', true))
+  function alternarCompleta() {
+    vibrar()
+    const v = !completa
+    setCompleta(v)
+    guardar('musica_completa', v)
+  }
 
   // 📚 v0.9.0 — las canciones ya NO viven acá: van a la Biblioteca.
   // Acá solo contamos cuántas están en el horno para ofrecer el
@@ -660,7 +674,9 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
     const envio = recortarLetraParaSuno(textoLimpio)
     if (envio.recortada) {
       mostrar(
-        `Tu letra tiene ${textoLimpio.length.toLocaleString('es')} caracteres y Suno acepta hasta 5.000 — mando hasta la última estrofa completa; el final lo completás con ⏩ Extender`,
+        `Tu letra tiene ${textoLimpio.length.toLocaleString('es')} caracteres y Suno acepta hasta 5.000 — mando hasta la última estrofa completa; ${
+          completa ? 'el final lo mando solo después (⏳)' : 'el final lo completás con ⏩ Extender'
+        }`,
         'info',
         6500,
       )
@@ -705,6 +721,10 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
           motor: 'suno' as const,
           estado: 'generando' as const,
           fecha: Date.now(),
+          // ⏳ v0.19.0 — FASE 16: con «Canción completa» encendido,
+          // el seguimiento encadena solo la parte de letra que
+          // quede sin cantarse cuando la pista esté lista.
+          ...(completa && !instrumental ? { autoContinuar: true } : {}),
         }))
       if (!nuevas.length) throw new Error('La API no devolvió pistas')
       // 📚 directo a la Biblioteca (v0.9.0)
@@ -720,7 +740,11 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
       mostrar(
         `${nuevas.length} ${nuevas.length === 1 ? 'versión' : 'versiones'} en el horno 🔥${
           usarMiVoz && miVoz && !instrumental ? ' cantadas con TU voz 🎤' : ''
-        } — las seguís en 📚 Biblioteca`,
+        } — ${
+          completa && !instrumental
+            ? '⏳ completa: si la letra no alcanza, el resto sale solo'
+            : 'las seguís en 📚 Biblioteca'
+        }`,
         'ok',
         5000,
       )
@@ -1506,7 +1530,11 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                         ? estimacion
                           ? `Tu letra pide ≈ ${formatoDuracion(estimacion.capada ? estimacion.cruda : estimacion.seg)}${
                               estimacion.capada
-                                ? ' — más que el máximo de la API (6:00): usaré 6:00 y si aún se corta, completala con ⏩ Extender'
+                                ? ` — más que el máximo de la API (6:00): usaré 6:00${
+                                    completa
+                                      ? ' y lo que falte sale SOLO en una continuación encadenada (⏳)'
+                                      : ' y si aún se corta, completala con ⏩ Extender'
+                                  }`
                                 : ' y Suno canta la letra entera dentro de ese tiempo'
                             }.`
                           : 'Elegí o pegá una letra y calculo los segundos que necesita para cantarse entera.'
@@ -1519,6 +1547,45 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                   Ajustes para que la letra alcance entera.
                 </p>
               ))}
+
+            {/* ⏳ v0.19.0 — FASE 16 (pedido de Rudy): CANCIÓN
+                COMPLETA. La API de Suno acepta hasta 6:00 POR PEDIDO
+                (tope duro verificado en docs.sunoapi.org) — con esto
+                encendido, si la letra no alcanza en ese tiempo, la
+                app manda SOLA la parte que falta en cuanto la
+                primera parte esté lista, y sigue encadenando hasta
+                que quede toda cantada. Sin tocar el ⏩ Extender. */}
+            {motor === 'suno' && !instrumental && (
+              <button
+                type="button"
+                role="switch"
+                aria-checked={completa}
+                onClick={alternarCompleta}
+                className="flex w-full items-center justify-between gap-3 rounded-xl border border-neutral-200 px-3 py-2.5 text-left transition-colors hover:border-acento/60 dark:border-neutral-800"
+              >
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-neutral-700 dark:text-neutral-200">
+                    ⏳ Canción completa
+                  </span>
+                  <span className="mt-0.5 block text-[10px] leading-relaxed text-neutral-400">
+                    {completa
+                      ? 'Si la letra no alcanza, mando SOLA la parte que falta en cuanto la primera esté lista — así la canción llega entera, sin que toques nada. Después unilas en un solo MP3 con 🔗.'
+                      : 'La API de Suno acepta hasta 6:00 por pedido — prendelo y la app completa sola lo que falte (cada parte extra gasta créditos)'}
+                  </span>
+                </span>
+                <span
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                    completa ? 'bg-acento' : 'bg-neutral-300 dark:bg-neutral-700'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                      completa ? 'left-[22px]' : 'left-0.5'
+                    }`}
+                  />
+                </span>
+              </button>
+            )}
 
             <button
               type="button"

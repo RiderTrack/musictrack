@@ -39,6 +39,7 @@ import {
   creditosRestantes,
   extenderMusica,
   pedirLetraSincronizada,
+  restanteDeLetra,
   type MotorSuno,
 } from '@/core/ai/suno'
 import { aplicarGrupo } from '@/core/ai/seguimiento'
@@ -152,36 +153,10 @@ function carpetaBonita(nombre: string): string {
   return nombre.replace(/(^|[\s\-·])([a-záéíóúñ])/g, (_m, sep: string, ch: string) => sep + ch.toUpperCase())
 }
 
-/** v0.8.0 — la parte de la letra que QUEDÓ SIN CANTARSE sabiendo
- * cuántas palabras se cantaron: recorre línea por línea (las marcas
- * [Coro] no cuentan) y junta desde la primera línea incompleta
- * hasta el final — mejor re-cantar una línea entera que dejarla
- * cortada a la mitad. */
-function restanteDeLetra(texto: string, palabrasCantadas: number): string {
-  if (!texto.trim() || palabrasCantadas <= 0) return ''
-  let cantadas = 0
-  let modoRestante = false
-  const restantes: string[] = []
-  for (const linea of texto.split('\n')) {
-    const esMarca = /^\s*\[[^\]]*\]\s*$/.test(linea)
-    if (esMarca) {
-      if (modoRestante) restantes.push(linea)
-      continue
-    }
-    const palabras = linea.replace(/\[[^\]]*\]/g, ' ').split(/\s+/).filter(Boolean).length
-    if (palabras === 0) {
-      if (modoRestante) restantes.push(linea)
-      continue
-    }
-    if (!modoRestante && cantadas + palabras <= palabrasCantadas) {
-      cantadas += palabras // línea cantada entera
-      continue
-    }
-    modoRestante = true
-    restantes.push(linea)
-  }
-  return restantes.join('\n').trim()
-}
+/** v0.8.0 — la parte de la letra que quedó sin cantarse: ahora
+ * vive en suno.ts (restanteDeLetra) para que la usen también las
+ * continuaciones automáticas de FASE 16 — misma lógica, un solo
+ * lugar. */
 
 /** v0.8.0 — RESPALDO sin letra sincronizada: las últimas estrofas
  * de la letra (el usuario dijo que lo que se corta es el final). */

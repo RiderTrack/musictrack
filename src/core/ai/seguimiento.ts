@@ -1,7 +1,14 @@
 import { leer, guardar, leerAjustes } from '@/core/storage/almacenamiento'
-import { CLAVE_CANCIONES, EVENTO_CANCIONES } from '@/core/storage/canciones'
+import { CLAVE_CANCIONES, EVENTO_CANCIONES, agregarCanciones, actualizarCancion } from '@/core/storage/canciones'
 import { respaldarCancion } from '@/core/storage/respaldo'
-import { consultarPistas, type MotorSuno, type PistaSuno } from '@/core/ai/suno'
+import {
+  consultarPistas,
+  consultarLetraConTiempos,
+  extenderMusica,
+  planContinuacion,
+  type MotorSuno,
+  type PistaSuno,
+} from '@/core/ai/suno'
 import { notificar, cancelarRecordatorio } from '@/core/notificaciones/notificaciones'
 import type { Cancion } from '@/types'
 
@@ -84,6 +91,10 @@ export function aplicarGrupo(cs: Cancion[], taskId: string, pistas: PistaSuno[])
       urlPortada: undefined,
       duracionSeg: undefined,
       error: undefined,
+      // ⏳ v0.19.0 — FASE 16: solo la versión A encadena la
+      // continuación automática (encadenar las dos duplicaría
+      // créditos: cada continuación es una generación).
+      autoContinuar: i === 0 ? raiz.autoContinuar : undefined,
     }
     return fusionarPista(base, p)
   })
@@ -94,10 +105,30 @@ export function aplicarGrupo(cs: Cancion[], taskId: string, pistas: PistaSuno[])
 async function tick(): Promise<void> {
   const ajustes = leerAjustes()
   if (!ajustes.tokenSuno) return
-  const pendientes = leer<Cancion[]>(CLAVE_CANCIONES, []).filter(
+  const todas = leer<Cancion[]>(CLAVE_CANCIONES, [])
+  const pendientes = todas.filter(
     (c) => c.estado === 'generando' && c.motor !== 'lyria' && c.taskId,
   )
-  if (!pendientes.length) return
+  if (!pendientes.length) {
+    // ⏳ v0.19.0 — FASE 16: «dormidas» — pistas que quedaron
+    // listas con continuación pendiente mientras la app estaba
+    // cerrada (el flag se apaga al despacharse, así que acá solo
+    // entran las que faltan). Se retoman al abrir la app.
+    const dormidas = todas.filter(
+      (c) =>
+        c.estado === 'lista' &&
+        c.autoContinuar &&
+        c.letraTexto &&
+        !c.instrumental &&
+        c.taskId &&
+        c.motor !== 'lyria',
+    )
+    if (dormidas.length) {
+      const motor: MotorSuno = { url: ajustes.urlSuno, token: ajustes.tokenSuno }
+      for (const d of dormidas) void autoContinuarCancion(motor, d)
+    }
+    return
+  }
   const motor: MotorSuno = { url: ajustes.urlSuno, token: ajustes.tokenSuno }
 
   // Un solo pedido por taskId, aunque haya varias tarjetas (versiones).
@@ -144,6 +175,19 @@ async function tick(): Promise<void> {
         ultimoChequeo.delete(tid)
       }
 
+      // ⏳ v0.19.0 — FASE 16: pistas que RECÍÉN quedaron listas con
+      // «Canción completa» → encadenar la continuación SOLA (sin
+      // tocar el modal ⏩). La función misma marca la tarjeta ANTES
+      // de despachar, así ningún ciclo la manda dos veces.
+      for (const n of grupoDespues.filter(
+        (n) =>
+          n.estado === 'lista' &&
+          n.autoContinuar &&
+          !grupoAntes.some((a) => a.id === n.id && a.estado === 'lista'),
+      )) {
+        void autoContinuarCancion(motor, n)
+      }
+
       window.dispatchEvent(new CustomEvent<Cancion[]>(EVENTO_CANCIONES, { detail: despues }))
     } catch (e) {
       // v0.6.5: este catch vacío se tragaba TODOS los errores (red
@@ -153,6 +197,80 @@ async function tick(): Promise<void> {
       // semáforo de Música escala solo a «no responde» si persiste.
       console.warn('[seguimiento] el chequeo de Suno falló (reintento en el próximo ciclo)', e)
     }
+  }
+}
+
+/** ⏳ v0.19.0 — FASE 16 (pedido de Rudy: "la letra se me corta al
+ * final y no quiero estar usando el Extender"): cuando una pista
+ * pedida con «Canción completa» queda lista, el seguimiento lee la
+ * letra sincronizada, detecta EXACTAMENTE hasta dónde se cantó y
+ * manda solo la parte que falta — la misma mecánica del modal ⏩
+ * Extender, sin tocar un botón. La tarjeta nueva también trae el
+ * flag: si la continuación vuelve a quedarse corta, se encadena
+ * otra vez, hasta que la letra quede entera.
+ *
+ * Defensas: el flag se apaga ANTES del primer await (nadie la
+ * manda dos veces), la letra sincronizada se reintenta una vez a
+ * los 12 s (a veces tarda en aparecer) y si algo falla, la
+ * notificación deja el modal manual como válvula de escape. */
+async function autoContinuarCancion(motor: MotorSuno, c: Cancion): Promise<void> {
+  if (!c.autoContinuar || c.instrumental || !c.letraTexto) return
+  // marca ANTES de cualquier await: otro ciclo no la repite
+  actualizarCancion(c.id, { autoContinuar: undefined })
+  try {
+    if (!c.taskId || !c.audioId) throw new Error('sin taskId/audioId')
+    let tiempos = await consultarLetraConTiempos(motor, c.taskId, c.audioId)
+    if (!tiempos) {
+      // la letra sincronizada a veces aparece unos segundos
+      // después del audio — un reintento y listo
+      await new Promise((r) => setTimeout(r, 12000))
+      tiempos = await consultarLetraConTiempos(motor, c.taskId, c.audioId)
+    }
+    if (!tiempos) throw new Error('sin letra sincronizada')
+    const plan = planContinuacion(c.letraTexto, c.duracionSeg ?? 0, tiempos.palabrasCantadas, tiempos.finUltimoCanto)
+    if (!plan) return // se cantó entera: nada que encadenar
+    const pistas = await extenderMusica(motor, {
+      audioId: c.audioId,
+      taskId: c.taskId,
+      continueAt: plan.continueAt,
+      letra: plan.restante,
+      estilo: c.estilo,
+      titulo: `${c.titulo} — continuación`,
+      instrumental: false,
+      // ⚠️ el modelo tiene que ser el MISMO de la original
+      modelo: c.modelo,
+    })
+    const nuevas: Cancion[] = pistas
+      .filter((p) => p.taskId)
+      .map((p, i) => ({
+        id: `${Date.now()}-auto${i}`,
+        taskId: p.taskId,
+        audioId: p.audioId,
+        titulo: `${c.titulo} — continuación`,
+        estilo: c.estilo,
+        letraTexto: plan.restante,
+        instrumental: false,
+        modelo: c.modelo,
+        motor: 'suno' as const,
+        continuacionDe: c.id,
+        continueAtSeg: plan.continueAt,
+        // si ESTA parte también se queda corta, se encadena de nuevo
+        autoContinuar: true,
+        estado: 'generando' as const,
+        fecha: Date.now(),
+      }))
+    if (!nuevas.length) throw new Error('La API no devolvió pistas')
+    agregarCanciones(nuevas)
+    void notificar(
+      '⏳ Mandé el final de tu canción',
+      `«${c.titulo}»${c.version ? ` (versión ${c.version})` : ''} se cortó en ${Math.floor((tiempos.finUltimoCanto ?? plan.continueAt) / 60)}:${String(Math.floor((tiempos.finUltimoCanto ?? plan.continueAt) % 60)).padStart(2, '0')} — la parte que faltó ya está en el horno 🔥`,
+    )
+  } catch {
+    // válvula de escape honesta: el modal manual sigue andando
+    void notificar(
+      '😕 No pude mandar el final sola',
+      `«${c.titulo}» — detectá el corte con ⏩ Extender en la Biblioteca y completala a mano`,
+    )
   }
 }
 

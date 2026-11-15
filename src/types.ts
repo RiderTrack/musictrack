@@ -1480,6 +1480,13 @@ export interface Cancion {
   /** v0.8.0 — segundo donde arranca esta continuación dentro de la
    * original (parámetro continueAt que se mandó a Suno). */
   continueAtSeg?: number
+  /** ⏳ v0.19.0 — FASE 16 (pedido de Rudy): pedido con «Canción
+   * completa» encendido — cuando la pista quede lista, la app
+   * encadena SOLA la parte de letra que quedó sin cantarse
+   * (continuación automática). Solo la versión A del grupo lo
+   * trae: encadenar las dos duplicaría créditos. Se apaga al
+   * despacharse la continuación. */
+  autoContinuar?: boolean
   /** v0.10.0 — ❤️ favorita del usuario (corazón en la Biblioteca). */
   favorita?: boolean
   /** v0.10.0 — 💾 el MP3 de Suno ya vive en el dispositivo

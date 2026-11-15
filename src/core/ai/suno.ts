@@ -932,6 +932,64 @@ export async function consultarLetraConTiempos(
   return { palabrasCantadas: palabras.length, finUltimoCanto: fin > 0 ? fin : undefined }
 }
 
+/** ⏳ v0.19.0 — FASE 16: la parte de la letra que QUEDÓ SIN
+ * CANTARSE sabiendo cuántas palabras se cantaron: recorre línea
+ * por línea (las marcas [Coro] no cuentan) y junta desde la
+ * primera línea incompleta hasta el final — mejor re-cantar una
+ * línea entera que dejarla cortada a la mitad. (Se mudó acá
+ * desde BibliotecaView: ahora la usan también las continuaciones
+ * automáticas del seguimiento.) */
+export function restanteDeLetra(texto: string, palabrasCantadas: number): string {
+  if (!texto.trim() || palabrasCantadas <= 0) return ''
+  let cantadas = 0
+  let modoRestante = false
+  const restantes: string[] = []
+  for (const linea of texto.split('\n')) {
+    const esMarca = /^\s*\[[^\]]*\]\s*$/.test(linea)
+    if (esMarca) {
+      if (modoRestante) restantes.push(linea)
+      continue
+    }
+    const palabras = linea.replace(/\[[^\]]*\]/g, ' ').split(/\s+/).filter(Boolean).length
+    if (palabras === 0) {
+      if (modoRestante) restantes.push(linea)
+      continue
+    }
+    if (!modoRestante && cantadas + palabras <= palabrasCantadas) {
+      cantadas += palabras // línea cantada entera
+      continue
+    }
+    modoRestante = true
+    restantes.push(linea)
+  }
+  return restantes.join('\n').trim()
+}
+
+/** ⏳ v0.19.0 — FASE 16 (pedido de Rudy): con lo que la pista llegó
+ * a cantar, QUÉ continuación hace falta: la letra restante y el
+ * segundo donde cortar (mismas fórmulas del modal ⏩ Extender,
+ * ahora también en automático). null = no hace falta: se cantó
+ * todo (o quedó menos de una línea suelta, que no justifica otra
+ * generación). */
+export function planContinuacion(
+  letra: string,
+  duracionSeg: number,
+  palabrasCantadas: number,
+  finUltimoCanto?: number,
+): { restante: string; continueAt: number } | null {
+  const restante = restanteDeLetra(letra, palabrasCantadas)
+  const palabrasRestantes = restante
+    .replace(/\[[^\]]*\]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean).length
+  if (palabrasRestantes < 4) return null
+  const dur = duracionSeg > 0 ? duracionSeg : 240
+  const continueAt = finUltimoCanto
+    ? Math.floor(Math.min(Math.max(finUltimoCanto - 2, 5), Math.max(5, dur - 3)))
+    : Math.max(5, Math.floor(dur - 10))
+  return { restante, continueAt }
+}
+
 /**
  * Consulta el estado de una tarea y devuelve TODAS sus versiones
  * (Suno genera 2 canciones por pedido): cada una con su propio
