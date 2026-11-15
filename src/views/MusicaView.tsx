@@ -4,6 +4,14 @@ import { leerAjustes, leer, borrarClave } from '@/core/storage/almacenamiento'
 import { guardarAudio } from '@/core/storage/audio'
 import { agregarCanciones, EVENTO_CANCIONES, leerCanciones } from '@/core/storage/canciones'
 import {
+  borrarPrompt,
+  carpetasDePrompts,
+  EVENTO_PROMPTS,
+  guardarPrompt,
+  leerPrompts,
+  type PromptGuardado,
+} from '@/core/storage/prompts'
+import {
   creditosRestantes,
   esEstiloCriolla,
   generarMusica,
@@ -12,6 +20,8 @@ import {
   modeloSunoSoportaDuracion,
   modeloSunoSoportaVoz,
   negativosAntiRanchera,
+  recetaConVoz,
+  recetaContenidaEn,
   recortarLetraParaSuno,
   type MotorSuno,
   type VozPersonal,
@@ -21,6 +31,7 @@ import { generarMusicaLyria, armarPromptLyria, type MotorLyria } from '@/core/ai
 import { Boton } from '@/components/ui/Boton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { useToast } from '@/components/ui/Toast'
+import { Modal } from '@/components/ui/Modal'
 import { vibrar, abrirURL, copiarTexto } from '@/core/natives/plataforma'
 import {
   ENERGIAS_ESTILO,
@@ -181,6 +192,23 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
     const i = FAMILIAS_RECETAS.findIndex((f) => f.recetas.some((r) => r.estilo === estilo))
     return i >= 0 ? i : 0
   })
+  // 📚 v0.18.0 — FASE 15 (pedido de Rudy): BIBLIOTECA DE PROMPTS.
+  // Los estilos que LE ATINAN se guardan en carpetitas por tipo de
+  // música («Criolla», «Power metal»…), como las canciones — nunca
+  // más se pierden. Viven en localStorage con las demás claves de
+  // la app (viajan solos en el respaldo y la sync) y avisan con
+  // EVENTO_PROMPTS para refrescar la lista sin recargar.
+  const [prompts, setPrompts] = useState<PromptGuardado[]>(() => leerPrompts())
+  const [modalGuardarAbierto, setModalGuardarAbierto] = useState(false)
+  const [nombrePrompt, setNombrePrompt] = useState('')
+  const [carpetaPrompt, setCarpetaPrompt] = useState('')
+  const [carpetaSel, setCarpetaSel] = useState('') // '' = Todas
+  const [borrarConfirmado, setBorrarConfirmado] = useState('') // id esperando el 2.º toque
+  useEffect(() => {
+    const alActualizar = (e: Event) => setPrompts((e as CustomEvent<PromptGuardado[]>).detail)
+    window.addEventListener(EVENTO_PROMPTS, alActualizar)
+    return () => window.removeEventListener(EVENTO_PROMPTS, alActualizar)
+  }, [])
   // 🎯 v0.9.1 — artistas que inspiran esta canción: se precargan
   // con la letra (si Claude la escribió inspirada) y su retrato
   // sonoro se suma al estilo al generar (Suno no acepta nombres).
@@ -270,7 +298,9 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
       setTexto(letra.texto)
       setTitulo(letra.titulo)
       setArtistas(letra.artistas ?? '')
-      setEstilo(estiloDesdeLetra(letra))
+      const nuevoEstilo = estiloDesdeLetra(letra)
+      setEstilo(nuevoEstilo)
+      sincronizarFamilia(nuevoEstilo)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -282,7 +312,9 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
       setTexto(letra.texto)
       setTitulo(letra.titulo)
       setArtistas(letra.artistas ?? '')
-      setEstilo(estiloDesdeLetra(letra))
+      const nuevoEstilo = estiloDesdeLetra(letra)
+      setEstilo(nuevoEstilo)
+      sincronizarFamilia(nuevoEstilo)
     } else {
       setTexto('')
       setTitulo('')
@@ -329,7 +361,15 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
 
   // 🎤 v0.7.0 — VOZ: exclusiva (elegir una quita la otra). Se
   // agrega al estilo como tag que Suno entiende y respeta.
+  // 👨👩 v0.18.0 — FASE 15 (pedido de Rudy): elegir la MISMA voz
+  // que ya está (a veces la puso un perfil criolla — «Mezzo con
+  // garra» trae «voz femenina») ya no la APAGA: antes eso apagaba
+  // también el perfil y parecía que lo predeterminado se perdía.
+  // Y cambiar de género retira los perfiles que cantan el opuesto
+  // (completos, con aviso) para no mandar señales cruzadas a Suno.
   const TAGS_VOZ = ['voz masculina', 'voz femenina', 'dúo de voces']
+  const TAGS_VOZ_HOMBRE = ['voz masculina', 'voz de tenor', 'voz de barítono', 'voz de bajo']
+  const TAGS_VOZ_MUJER = ['voz femenina', 'voz de contralta', 'voz de mezzo', 'voz de soprano']
   const vozActiva = partesEstilo.includes('voz masculina')
     ? 'Masculina'
     : partesEstilo.includes('voz femenina')
@@ -345,12 +385,26 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
       .filter(Boolean)
     const sinVoz = partes.filter((p) => !TAGS_VOZ.includes(p.toLowerCase()))
     const tag = v === 'Masculina' ? 'voz masculina' : v === 'Femenina' ? 'voz femenina' : 'dúo de voces'
-    // tocar la voz activa la apaga (vuelve a Cualquiera)
-    if (v === 'Cualquiera' || partes.some((p) => p.toLowerCase() === tag)) {
+    if (v === 'Cualquiera') {
       setEstilo(sinVoz.join(', '))
       return
     }
-    setEstilo([...sinVoz, tag].join(', '))
+    // ya está elegida (sola o viniendo de un perfil): se confirma
+    // y no se desarma nada — antes esto la apagaba de sorpresa
+    if (partes.some((p) => p.toLowerCase() === tag)) return
+    // perfiles que cantan el género OPUESTO: se retiran completos
+    const contrarias = v === 'Masculina' ? TAGS_VOZ_MUJER : v === 'Femenina' ? TAGS_VOZ_HOMBRE : []
+    const perfilEnContra =
+      perfilVozActivo && perfilVozActivo.tags.some((t) => contrarias.includes(t)) ? perfilVozActivo : undefined
+    const base = perfilEnContra ? sinVoz.filter((p) => !perfilEnContra.tags.includes(p.toLowerCase())) : sinVoz
+    if (perfilEnContra) {
+      mostrar(
+        `🎤 Saqué el perfil «${perfilEnContra.etiqueta}» — canta ${v === 'Masculina' ? 'femenina' : 'masculina'} y pediste voz ${v.toLowerCase()}`,
+        'info',
+        5000,
+      )
+    }
+    setEstilo([...base, tag].join(', '))
   }
 
   // ⏱️ v0.7.0 — TEMPO: exclusivo, agrega el BPM al estilo.
@@ -387,6 +441,24 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
       return
     }
     setEstilo([...sinPerfil, ...p.tags].join(', '))
+  }
+
+  // 🍱 v0.18.0 — FASE 15: la receta que sigue APLICADA en el estilo
+  // (todas sus partes presentes — ya no igualdad exacta). Alimenta
+  // el ✓ del chip, el badge del grupo, la familia que se muestra y
+  // la carpetita sugerida al guardar un prompt.
+  const recetaVigente = (() => {
+    for (const familia of FAMILIAS_RECETAS)
+      for (const receta of familia.recetas)
+        if (recetaContenidaEn(receta.estilo, estilo)) return { familia, receta }
+    return undefined
+  })()
+
+  /** 🍱 v0.18.0 — muestra la familia de la receta que vive en el
+   * estilo (cuando llega una letra o se carga un prompt guardado). */
+  function sincronizarFamilia(nuevoEstilo: string) {
+    const i = FAMILIAS_RECETAS.findIndex((f) => f.recetas.some((r) => recetaContenidaEn(r.estilo, nuevoEstilo)))
+    if (i >= 0) setFamiliaReceta(i)
   }
 
   // 🎚️ v0.9.0 — PRODUCCIÓN. La estrella: «A capela» APAGA todos
@@ -459,16 +531,76 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
   // carácter + tempo). Como las partes usan los mismos nombres que
   // los chips de abajo, los instrumentos se encienden solos y Rudy
   // puede sumar o quitar lo que quiera a partir de ahí.
+  // 🎤 v0.18.0 — FASE 15 (pedido de Rudy): la receta ya NO se lleva
+  // puesta la voz — hombre/mujer/dúo y el perfil criolla activo se
+  // mantienen (antes salía «cualquiera» y había que reelegir).
   function aplicarReceta(familia: FamiliaRecetas, receta: RecetaEstilo) {
     vibrar()
-    setEstilo(receta.estilo)
-    const familiaActiva = FAMILIAS_RECETAS.findIndex((f) => f.recetas.some((r) => r.estilo === estilo))
-    if (familiaActiva >= 0 && familiaActiva !== familiaReceta) setFamiliaReceta(familiaActiva)
+    setEstilo(recetaConVoz(receta.estilo, estilo, [...TAGS_VOZ, ...TAGS_PERFILES_VOZ]))
     mostrar(
-      `🍱 ${familia.titulo} · ${receta.etiqueta} — receta aplicada. Sumá o quitá lo que quieras abajo`,
+      `🍱 ${familia.titulo} · ${receta.etiqueta} — receta aplicada. Sumá o quitá lo que quieras abajo${
+        vozActiva !== 'Cualquiera' || perfilVozActivo ? ' — tu voz se mantiene 🎤' : ''
+      }`,
       'ok',
       4000,
     )
+  }
+
+  // 📚 v0.18.0 — FASE 15: guardar el prompt ACTUAL en la
+  // biblioteca, con todo precargado — nombre según la receta
+  // aplicada (o el título de la canción) y carpetita según la
+  // familia de la receta (o «Criolla» si el estilo lo es).
+  function abrirGuardarPrompt() {
+    vibrar()
+    const previsto = promptAvanzado.trim() || estilo.trim()
+    if (!previsto) {
+      mostrar('Armá tu estilo primero (receta, chips o a mano) y después lo guardás 💾', 'info', 4000)
+      return
+    }
+    setNombrePrompt(
+      recetaVigente?.receta.etiqueta || titulo.trim() || previsto.split(',').slice(0, 3).join(', ').slice(0, 40),
+    )
+    setCarpetaPrompt(recetaVigente?.familia.titulo || (esEstiloCriolla(previsto) ? 'Criolla' : ''))
+    setModalGuardarAbierto(true)
+  }
+
+  function confirmarGuardarPrompt() {
+    const guardado = guardarPrompt({
+      nombre: nombrePrompt,
+      estilo,
+      avanzado: promptAvanzado.trim() || undefined,
+      carpeta: carpetaPrompt,
+    })
+    setModalGuardarAbierto(false)
+    mostrar(`💾 Guardado en «${guardado.carpeta}» — lo encontrás en 📚 Mi biblioteca de prompts`, 'ok', 4500)
+  }
+
+  /** 📖 Carga un prompt guardado en el formulario (estilo simple y
+   * avanzado si lo tenía) y muestra la familia de su receta. */
+  function usarPrompt(p: PromptGuardado) {
+    vibrar()
+    setEstilo(p.estilo)
+    setPromptAvanzado(p.avanzado ?? '')
+    sincronizarFamilia(p.estilo)
+    setBorrarConfirmado('')
+    mostrar(
+      `📖 «${p.nombre}» cargado${p.avanzado ? ' (con su prompt avanzado 🧬)' : ''} — ajustá lo que quieras y generá`,
+      'ok',
+      4500,
+    )
+  }
+
+  /** 🗑 Borrar en dos toques (como las listas): el primero arma el
+   * «¿seguro?», el segundo confirma. Cualquier otro toque lo baja. */
+  function quererBorrarPrompt(p: PromptGuardado) {
+    vibrar()
+    if (borrarConfirmado !== p.id) {
+      setBorrarConfirmado(p.id)
+      return
+    }
+    borrarPrompt(p.id)
+    setBorrarConfirmado('')
+    mostrar(`🗑 Prompt «${p.nombre}» borrado de «${p.carpeta}»`, 'info', 3500)
   }
 
   async function generar() {
@@ -852,18 +984,30 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                   onChange={(e) => setEstilo(e.target.value)}
                   maxLength={200}
                   placeholder="rock, punk, enérgica, voz masculina, 120 bpm"
-                  className={`${claseInput} pr-20`}
+                  className={`${claseInput} ${estilo ? 'pr-32' : 'pr-14'}`}
                 />
-                {estilo && (
+                <span className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
+                  {/* 💾 v0.18.0 — FASE 15: guardar este prompt en la
+                      biblioteca (carpetitas por tipo de música). */}
                   <button
                     type="button"
-                    onClick={() => setEstilo('')}
-                    title="Vaciar el estilo"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full px-2 py-1 text-[10px] font-bold text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-acento dark:hover:bg-neutral-800"
+                    onClick={abrirGuardarPrompt}
+                    title="Guardar este prompt en tu biblioteca"
+                    className="rounded-full px-2 py-1 text-[11px] font-bold text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-acento dark:hover:bg-neutral-800"
                   >
-                    🧹 limpiar
+                    💾
                   </button>
-                )}
+                  {estilo && (
+                    <button
+                      type="button"
+                      onClick={() => setEstilo('')}
+                      title="Vaciar el estilo"
+                      className="rounded-full px-2 py-1 text-[10px] font-bold text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-acento dark:hover:bg-neutral-800"
+                    >
+                      🧹 limpiar
+                    </button>
+                  )}
+                </span>
               </div>
             </div>
 
@@ -968,9 +1112,9 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                   ajustando a mano. Va PRIMERO en el estudio. */}
               <GrupoPlegable
                 titulo="🍱 Recetas por estilo"
-                nota="elegí un estilo y te lo armo completo"
+                nota="te lo armo completo — tu voz se mantiene"
                 abierta
-                activos={FAMILIAS_RECETAS.some((f) => f.recetas.some((r) => r.estilo === estilo)) ? 1 : 0}
+                activos={recetaVigente ? 1 : 0}
               >
                 <div className="flex w-full flex-wrap gap-1.5">
                   {FAMILIAS_RECETAS.map((f, i) => (
@@ -990,7 +1134,7 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                 </div>
                 <div className="grid w-full grid-cols-2 gap-1.5">
                   {FAMILIAS_RECETAS[familiaReceta].recetas.map((r) => {
-                    const activa = estilo === r.estilo
+                    const activa = recetaContenidaEn(r.estilo, estilo)
                     return (
                       <button
                         key={r.etiqueta}
@@ -1011,6 +1155,131 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                     )
                   })}
                 </div>
+                {/* 👨👩 v0.18.0 — FASE 15 (pedido de Rudy): la voz
+                    hombre/mujer AQUÍ, junto a las recetas — se
+                    mantiene aunque toqués otra receta y no apaga los
+                    perfiles criolla de abajo. Mismo estado que el
+                    grupo «Voz» del estudio (los dos se sincronizan
+                    solos). */}
+                <div className="flex w-full flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">Voz:</span>
+                  {VOZ_CANTANTE.filter((v) => v !== 'Cualquiera').map((v) => {
+                    const activo = vozActiva === v
+                    return (
+                      <button key={v} type="button" aria-pressed={activo} onClick={() => fijarVoz(v)} className={claseChip(activo)}>
+                        {activo ? '✓ ' : ''}
+                        {v === 'Masculina' ? '👨 Hombre' : v === 'Femenina' ? '👩 Mujer' : '👥 Dúo'}
+                      </button>
+                    )
+                  })}
+                  {vozActiva !== 'Cualquiera' && (
+                    <button
+                      type="button"
+                      onClick={() => fijarVoz('Cualquiera')}
+                      className="rounded-full px-2 py-1 text-[11px] font-semibold text-neutral-400 transition-colors hover:text-acento"
+                    >
+                      ✕ quitar
+                    </button>
+                  )}
+                </div>
+                <p className="w-full text-[10px] leading-relaxed text-neutral-400">
+                  Elegida una vez, se mantiene al cambiar de receta — y no apaga los perfiles criolla de abajo.
+                </p>
+              </GrupoPlegable>
+
+              {/* 📚 v0.18.0 — FASE 15 (pedido de Rudy): MI BIBLIOTECA
+                  DE PROMPTS — los estilos que le atinan bien, en
+                  carpetitas por tipo de música (como las canciones
+                  de la Biblioteca). Se guardan con 💾 junto al campo
+                  Estilo y se reutilizan con ▶ Usar. */}
+              <GrupoPlegable
+                titulo="📚 Mi biblioteca de prompts"
+                nota={
+                  prompts.length
+                    ? `${prompts.length} ${prompts.length === 1 ? 'guardado' : 'guardados'}`
+                    : 'los que le atinan, en carpetitas'
+                }
+                activos={carpetaSel ? prompts.filter((p) => p.carpeta === carpetaSel).length : prompts.length}
+              >
+                {prompts.length === 0 ? (
+                  <p className="w-full text-[11px] leading-relaxed text-neutral-400">
+                    Acá quedan los prompts que le atinan bien, ordenaditos en carpetitas (Criolla, Power metal…). Armá
+                    tu estilo como más te guste y tocá <b>💾</b> junto al campo Estilo para guardarlo — no lo perdés nunca
+                    más.
+                  </p>
+                ) : (
+                  <div className="w-full space-y-2">
+                    <div className="flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        aria-pressed={carpetaSel === ''}
+                        onClick={() => {
+                          setCarpetaSel('')
+                          setBorrarConfirmado('')
+                        }}
+                        className={claseChip(carpetaSel === '')}
+                      >
+                        {carpetaSel === '' ? '✓ ' : ''}Todas ({prompts.length})
+                      </button>
+                      {carpetasDePrompts(prompts).map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          aria-pressed={carpetaSel === c}
+                          onClick={() => {
+                            setCarpetaSel(c)
+                            setBorrarConfirmado('')
+                          }}
+                          className={claseChip(carpetaSel === c)}
+                        >
+                          {carpetaSel === c ? '✓ ' : ''}
+                          {c} ({prompts.filter((p) => p.carpeta === c).length})
+                        </button>
+                      ))}
+                    </div>
+                    {prompts
+                      .filter((p) => !carpetaSel || p.carpeta === carpetaSel)
+                      .map((p) => (
+                        <div key={p.id} className="rounded-xl border border-neutral-200 p-2.5 dark:border-neutral-800">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <span className="block truncate text-[11px] font-bold text-neutral-700 dark:text-neutral-200">
+                                {p.nombre}
+                              </span>
+                              <span className="mt-0.5 block text-[9px] text-neutral-400">
+                                📁 {p.carpeta} ·{' '}
+                                {new Date(p.fecha).toLocaleDateString('es-PE', { day: 'numeric', month: 'short' })}
+                                {p.avanzado ? ' · 🧬 avanzado' : ''}
+                              </span>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => usarPrompt(p)}
+                                className="rounded-full border border-acento/40 bg-acento/10 px-2.5 py-1 text-[10px] font-bold text-acento transition-colors hover:border-acento"
+                              >
+                                ▶ Usar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => quererBorrarPrompt(p)}
+                                className={`rounded-full border px-2 py-1 text-[10px] font-bold transition-colors ${
+                                  borrarConfirmado === p.id
+                                    ? 'border-red-400 bg-red-50 text-red-500 dark:bg-red-950/40 dark:text-red-400'
+                                    : 'border-neutral-200 text-neutral-400 hover:border-red-300 hover:text-red-400 dark:border-neutral-700'
+                                }`}
+                              >
+                                {borrarConfirmado === p.id ? '¿seguro?' : '🗑'}
+                              </button>
+                            </div>
+                          </div>
+                          <p className="mt-1 line-clamp-2 text-[10px] leading-snug text-neutral-400">
+                            {p.avanzado ?? p.estilo}
+                          </p>
+                        </div>
+                      ))}
+                  </div>
+                )}
               </GrupoPlegable>
 
               {GRUPOS_TAGS_ESTILO.map((g, i) => (
@@ -1041,7 +1310,7 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                 })}
               </GrupoPlegable>
 
-              <GrupoPlegable titulo="Voz" nota="una sola" activos={vozActiva !== 'Cualquiera' ? 1 : 0}>
+              <GrupoPlegable titulo="Voz" nota="una sola — ya no se borra al cambiar de receta" activos={vozActiva !== 'Cualquiera' ? 1 : 0}>
                 {VOZ_CANTANTE.map((v) => {
                   const activo = vozActiva === v
                   return (
@@ -1330,6 +1599,74 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
           </div>
         )}
       </section>
+
+      {/* 💾 v0.18.0 — FASE 15: modal de guardado de prompt. Nombre
+          y carpetita precargados según la receta aplicada. */}
+      <Modal abierto={modalGuardarAbierto} onCerrar={() => setModalGuardarAbierto(false)} titulo="💾 Guardar prompt">
+        <div className="space-y-3">
+          <p className="text-[12px] leading-relaxed text-neutral-500 dark:text-neutral-400">
+            Lo que le atina bien, guardado en carpetitas — Criolla, Power metal, lo que sea. Después lo volvés a usar con
+            ▶ Usar y no lo perdés nunca más.
+          </p>
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">Nombre</span>
+            <input
+              value={nombrePrompt}
+              onChange={(e) => setNombrePrompt(e.target.value)}
+              maxLength={60}
+              placeholder="Ej: Vals criollo cantinero"
+              className={claseInput}
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+              Carpetita <span className="font-normal text-neutral-400">(tipo de música)</span>
+            </span>
+            <input
+              value={carpetaPrompt}
+              onChange={(e) => setCarpetaPrompt(e.target.value)}
+              maxLength={30}
+              placeholder="Ej: Criolla"
+              list="carpetas-prompts-existentes"
+              className={claseInput}
+            />
+            <datalist id="carpetas-prompts-existentes">
+              {carpetasDePrompts(prompts).map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
+          </label>
+          {carpetasDePrompts(prompts).length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {carpetasDePrompts(prompts).map((c) => (
+                <button key={c} type="button" onClick={() => setCarpetaPrompt(c)} className={claseChip(carpetaPrompt === c)}>
+                  📁 {c}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="rounded-xl bg-neutral-100 p-2.5 dark:bg-neutral-800/60">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">Se va a guardar</p>
+            {promptAvanzado.trim() ? (
+              <>
+                <p className="mt-1 line-clamp-3 text-[11px] leading-snug text-neutral-600 dark:text-neutral-300">
+                  {promptAvanzado}
+                </p>
+                <p className="mt-1 text-[10px] font-semibold text-acento">
+                  🧬 Tu prompt avanzado ({promptAvanzado.length} caracteres)
+                </p>
+              </>
+            ) : (
+              <p className="mt-1 line-clamp-3 text-[11px] leading-snug text-neutral-600 dark:text-neutral-300">
+                {estilo.trim() || '(vacío)'}
+              </p>
+            )}
+          </div>
+          <Boton className="w-full" onClick={confirmarGuardarPrompt}>
+            💾 Guardar en «{carpetaPrompt.trim() || 'Varios'}»
+          </Boton>
+        </div>
+      </Modal>
     </div>
   )
 }

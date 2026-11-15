@@ -608,6 +608,44 @@ export function negativosAntiRanchera(estilo: string, modelo: string): string | 
   return 'mariachi, trumpets, guitarron, banda sinaloense, norteno, tuba, reggaeton'
 }
 
+/** 📚 v0.18.0 — FASE 15 (pedido de Rudy): ¿la receta sigue
+ * aplicada en el estilo? Ya NO se compara con igualdad exacta:
+ * mientras TODAS sus partes sigan presentes — aunque se sume la
+ * voz, se encienda un instrumento o se toque cualquier chip — el
+ * ✓ del chip sigue prendido. Antes cualquier ajuste la
+ * «desactivaba» y parecía que lo predeterminado se había perdido. */
+export function recetaContenidaEn(recetaEstilo: string, estilo: string): boolean {
+  const presentes = estilo
+    .split(',')
+    .map((p) => p.trim().toLowerCase())
+    .filter(Boolean)
+  return recetaEstilo
+    .split(',')
+    .map((p) => p.trim().toLowerCase())
+    .filter(Boolean)
+    .every((p) => presentes.includes(p))
+}
+
+/** 🎤 v0.18.0 — FASE 15: aplica una receta CONSERVANDO la voz ya
+ * elegida. La receta manda en género, instrumentos, carácter y
+ * tempo — pero los tags de voz del usuario (hombre/mujer/dúo y el
+ * perfil criolla activo) se quedan: antes se los llevaba puestos
+ * de reemplazo y la canción salía con la voz «cualquiera».
+ * `tagsVoz` son los tags a preservar (TAGS_VOZ + los tags de los
+ * perfiles criolla, que MusicaView pasa de su estudio). */
+export function recetaConVoz(recetaEstilo: string, estiloActual: string, tagsVoz: string[]): string {
+  const base = recetaEstilo
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean)
+  const baseBaja = base.map((p) => p.toLowerCase())
+  const aMantener = estiloActual
+    .split(',')
+    .map((p) => p.trim())
+    .filter((p) => p && tagsVoz.includes(p.toLowerCase()) && !baseBaja.includes(p.toLowerCase()))
+  return [...base, ...aMantener].join(', ')
+}
+
 export function estiloParaSuno(estilo: string, limite: number = LIMITE_ESTILO_SUNO): string {
   const e0 = estilo.trim()
   if (!e0) return e0
