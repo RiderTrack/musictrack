@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  Clapperboard,
   Disc3,
   Download,
   FastForward,
@@ -65,6 +66,7 @@ import { armarLrc, estimarLineasConTiempo, incrustarEtiquetasMp3, lineasConTiemp
 import { Boton } from '@/components/ui/Boton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Modal } from '@/components/ui/Modal'
+import { ModalVideoKaraoke } from '@/components/karaoke/ModalVideoKaraoke'
 import { useToast } from '@/components/ui/Toast'
 import { compartir, vibrar, abrirURL, copiarTexto } from '@/core/natives/plataforma'
 import {
@@ -691,6 +693,15 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
   const [sepBajando, setSepBajando] = useState<string | null>(null)
   const sepAudioRef = useRef<HTMLAudioElement | null>(null)
 
+  // ═════════════════════════════════════════════════════════
+  // 🎬 v0.21.0 — FASE 19 (pedido de Rudy): VIDEO KARAOKE.
+  // Desde cada canción con letra: fotos de fondo + la letra
+  // avanzando con la música, fuente/color/animación a gusto —
+  // se graba EN la app (sin créditos) y baja listo para
+  // compartir. El estudio entero vive en su propio componente.
+  // ═════════════════════════════════════════════════════════
+  const [karaokeModal, setKaraokeModal] = useState<Cancion | null>(null)
+
   useEffect(() => {
     const alCambiar = (e: Event) => setSeps((e as CustomEvent<Separacion[]>).detail)
     window.addEventListener(EVENTO_SEPARACIONES, alCambiar)
@@ -1302,6 +1313,24 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
                     className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-neutral-300 px-3 py-2 text-[11px] font-bold text-neutral-600 transition-colors hover:border-acento/40 hover:text-acento dark:border-neutral-700 dark:text-neutral-300"
                   >
                     <Scissors className="h-3.5 w-3.5" /> Separar pistas — karaoke, voz sola o un instrumento
+                  </button>
+                )}
+
+                {/* 🎬 v0.21.0 — VIDEO KARAOKE (FASE 19): tus fotos de
+                    fondo + la letra avanzando con la música, con la
+                    fuente, el color y la animación que elijas. Se
+                    graba en la app y baja a la carpeta de siempre. */}
+                {c.estado === 'lista' && !c.instrumental && letraDe(c) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      vibrar()
+                      setKaraokeModal(c)
+                    }}
+                    title="Un video con tus fotos y la letra avanzando con la música — listo para compartir"
+                    className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-acento/40 bg-acento/10 px-3 py-2 text-[11px] font-bold text-acento transition-colors hover:bg-acento/20"
+                  >
+                    <Clapperboard className="h-3.5 w-3.5" /> Video karaoke — tus fotos + la letra avanzando
                   </button>
                 )}
 
@@ -1963,6 +1992,10 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
           </div>
         )}
       </Modal>
+
+      {/* 🎬 v0.21.0 — FASE 19: ESTUDIO DE VIDEO KARAOKE (fotos,
+          estilo, vista previa y grabación en la app). */}
+      <ModalVideoKaraoke cancion={karaokeModal} onCerrar={() => setKaraokeModal(null)} aviso={mostrar} />
 
       {/* 🎵 v0.10.0 — MODAL AGREGAR A LISTA: tocás el ➕ de una
           canción y elegís la lista (o la creás al toque). */}

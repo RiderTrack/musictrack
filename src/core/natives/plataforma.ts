@@ -91,6 +91,50 @@ export async function tomarFoto(calidad = 80): Promise<string | null> {
   }
 }
 
+/** v0.21.0 — 🎬 FASE 19: VARIAS fotos de una para el fondo del
+ * video karaoke. En Android el WebView de Capacitor abre la
+ * galería con selección múltiple; en web, el selector de
+ * archivos del navegador. Devuelve los dataURL (vacío si canceló
+ * o no eligió nada). */
+export function elegirVariasImagenes(): Promise<string[]> {
+  return new Promise((resolver) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    input.multiple = true
+    input.style.position = 'fixed'
+    input.style.opacity = '0'
+    input.onchange = () => {
+      const archivos = [...(input.files ?? [])]
+      input.remove()
+      if (!archivos.length) {
+        resolver([])
+        return
+      }
+      const salidas: string[] = []
+      let pendientes = archivos.length
+      const listo = () => {
+        if (--pendientes === 0) resolver(salidas)
+      }
+      for (const archivo of archivos) {
+        const lector = new FileReader()
+        lector.onload = () => {
+          if (typeof lector.result === 'string') salidas.push(lector.result)
+          listo()
+        }
+        lector.onerror = listo
+        lector.readAsDataURL(archivo)
+      }
+    }
+    input.oncancel = () => {
+      input.remove()
+      resolver([])
+    }
+    document.body.appendChild(input)
+    input.click()
+  })
+}
+
 /** Abre una URL externa (APK, página): Custom Tab en Android, pestaña nueva en web. */
 export async function abrirURL(url: string): Promise<boolean> {
   try {
