@@ -17,6 +17,7 @@ import {
   Play,
   RefreshCw,
   Rocket,
+  Scissors,
   Search,
   Share2,
   Skull,
@@ -28,19 +29,35 @@ import { leerAudio, borrarAudio } from '@/core/storage/audio'
 import { agregarCanciones, actualizarCancion, borrarCancion, EVENTO_CANCIONES, guardarCanciones, leerCanciones } from '@/core/storage/canciones'
 import { alternarEnLista, borrarLista, crearLista, EVENTO_LISTAS, leerListas, type ListaReproduccion } from '@/core/storage/listas'
 import { necesitaRespaldo, respaldarCancion, respaldarPendientes } from '@/core/storage/respaldo'
+import {
+  actualizarSeparacion,
+  borrarSeparacion,
+  EVENTO_SEPARACIONES,
+  guardarSeparacion,
+  leerSeparaciones,
+  type Separacion,
+} from '@/core/storage/separaciones'
 import { useReproductor } from '@/core/audio/reproductor'
-import { guardarMp3EnDescargas, guardarTextoEnDescargas, nombreMp3, nombreLrc, type ResultadoDescarga } from '@/core/natives/descargas'
+import { guardarArchivoEnDescargas, guardarMp3EnDescargas, guardarTextoEnDescargas, nombreMp3, nombreLrc, nombreStem, type ResultadoDescarga } from '@/core/natives/descargas'
 import { descargarLetraPdf } from '@/core/exportar/pdfLetra'
 import { recortarYReducir } from '@/core/imagenes/imagen'
 import { tomarFoto } from '@/core/natives/plataforma'
 import {
   consultarLetraConTiempos,
   consultarPistas,
+  consultarSeparacion,
   creditosRestantes,
+  emojiStem,
+  etiquetaSeparacion,
   extenderMusica,
+  INSTRUMENTOS_SEPARABLES,
+  nombreBonitoStem,
   pedirLetraSincronizada,
   restanteDeLetra,
+  separarPistas,
   type MotorSuno,
+  type PistaSeparada,
+  type TipoSeparacion,
 } from '@/core/ai/suno'
 import { aplicarGrupo } from '@/core/ai/seguimiento'
 import { pedirPermisoNotificaciones, programarRecordatorio } from '@/core/notificaciones/notificaciones'
@@ -658,6 +675,163 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
     }
   }
 
+  // ═════════════════════════════════════════════════════════
+  // 🎚️ v0.20.0 — FASE 18 (pedido de Rudy): SEPARAR PISTAS de
+  // una canción hecha — voz sola y música sola (karaoke), UN
+  // instrumento (guitarra, batería…) o todo separado. La API
+  // de Suno hace el trabajo; la app sigue la tarea con polling
+  // y deja escuchar y bajar cada pista. Las URLs viven 14 días.
+  // ═════════════════════════════════════════════════════════
+  const [seps, setSeps] = useState<Separacion[]>(() => leerSeparaciones())
+  const [sepModal, setSepModal] = useState<Cancion | null>(null)
+  const [sepTipo, setSepTipo] = useState<TipoSeparacion>('separate_vocal')
+  const [sepInstrumento, setSepInstrumento] = useState(INSTRUMENTOS_SEPARABLES[2].id) // Guitarra
+  const [sepEnviando, setSepEnviando] = useState(false)
+  const [sepSonando, setSepSonando] = useState<string | null>(null)
+  const [sepBajando, setSepBajando] = useState<string | null>(null)
+  const sepAudioRef = useRef<HTMLAudioElement | null>(null)
+
+  useEffect(() => {
+    const alCambiar = (e: Event) => setSeps((e as CustomEvent<Separacion[]>).detail)
+    window.addEventListener(EVENTO_SEPARACIONES, alCambiar)
+    return () => window.removeEventListener(EVENTO_SEPARACIONES, alCambiar)
+  }, [])
+
+  function cerrarSeparar() {
+    sepAudioRef.current?.pause()
+    setSepSonando(null)
+    setSepModal(null)
+  }
+
+  async function abrirSeparar(c: Cancion) {
+    if (!ajustes.tokenSuno) {
+      mostrar('Pegá tu clave de Suno API en Ajustes primero', 'info', 3500)
+      return
+    }
+    vibrar()
+    setSepModal(c)
+  }
+
+  async function enviarSeparacion(tipo: TipoSeparacion, instrumento?: string) {
+    const c = sepModal
+    if (!c || sepEnviando) return
+    if (!c.taskId && !c.audioId) {
+      mostrar('Esta canción no tiene id de Suno (¿muy vieja?) — no puedo separarla', 'info', 4500)
+      return
+    }
+    setSepEnviando(true)
+    try {
+      const motor: MotorSuno = { url: ajustes.urlSuno, token: ajustes.tokenSuno }
+      const taskId = await separarPistas(motor, {
+        taskId: c.taskId || undefined,
+        audioId: c.audioId,
+        tipo,
+        instrumento,
+      })
+      guardarSeparacion({
+        id: taskId,
+        cancionId: c.id,
+        tituloCancion: c.titulo,
+        tipo,
+        instrumento,
+        fecha: Date.now(),
+        estado: 'procesando',
+      })
+      void actualizarCreditos()
+      vibrar()
+      mostrar('Separación en camino 🔪 — te la muestro acá cuando esté lista', 'ok', 4000)
+    } catch (e) {
+      mostrar(e instanceof Error ? e.message : 'Falló la separación', 'error', 4500)
+    } finally {
+      setSepEnviando(false)
+    }
+  }
+
+  // ⏱ polling de las separaciones en curso (con el modal abierto
+  // — al cerrar se pausa, al reabrir sigue: la tarea vive en la API)
+  useEffect(() => {
+    if (!sepModal) return
+    const vivas = seps.filter((s) => s.cancionId === sepModal.id && s.estado === 'procesando')
+    if (!vivas.length) return
+    let vivo = true
+    const tic = async () => {
+      if (!vivo) return
+      const motor: MotorSuno = { url: ajustes.urlSuno, token: ajustes.tokenSuno }
+      for (const s of vivas) {
+        try {
+          const r = await consultarSeparacion(motor, s.id)
+          if (!vivo) return
+          if (r.estado === 'lista') {
+            actualizarSeparacion(s.id, { estado: 'lista', pistas: r.pistas })
+            vibrar()
+            mostrar('¡Pistas listas! 🎚️ — escuchalas y bajá las que quieras', 'ok', 4500)
+          } else if (r.estado === 'error') {
+            actualizarSeparacion(s.id, { estado: 'error', error: r.error })
+          }
+        } catch {
+          /* bip puntual de red — el próximo tic reintenta */
+        }
+      }
+    }
+    void tic()
+    const t = window.setInterval(() => void tic(), 5000)
+    return () => {
+      vivo = false
+      window.clearInterval(t)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sepModal, seps])
+
+  /** ▶ una pista separada (un solo <audio> para todas). */
+  function alternarStem(url: string) {
+    let a = sepAudioRef.current
+    if (!a) {
+      a = new Audio()
+      a.preload = 'metadata'
+      a.addEventListener('ended', () => setSepSonando(null))
+      a.addEventListener('error', () => setSepSonando(null))
+      sepAudioRef.current = a
+    }
+    if (sepSonando === url && !a.paused) {
+      a.pause()
+      setSepSonando(null)
+      return
+    }
+    // si la canción entera suena en el reproductor global, se
+    // calla para no chocar con la pista
+    if (reproductor.sonando) reproductor.alternar()
+    a.src = url
+    setSepSonando(url)
+    void a.play().catch(() => {
+      setSepSonando(null)
+      mostrar('No pude reproducir esa pista — probá de nuevo o bajala', 'error', 4500)
+    })
+  }
+
+  /** ⬇ baja una pista separada a la carpeta de la canción. */
+  async function descargarStem(c: Cancion, p: PistaSeparada) {
+    if (sepBajando) return
+    setSepBajando(p.url)
+    try {
+      const r = await fetch(p.url)
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      const blob = await r.blob()
+      const res = await guardarArchivoEnDescargas(
+        blob,
+        nombreStem(c.titulo, nombreBonitoStem(p.nombreIngles), c.version),
+        carpetaDe(c),
+      )
+      if (!res.ok) throw new Error(res.error)
+      vibrar()
+      mostrar(`Pista guardada en ${res.ruta} 💾`, 'ok', 5000)
+    } catch {
+      await abrirURL(p.url)
+      mostrar('No pude bajarla directo — la abrí para que la guardes', 'info', 4500)
+    } finally {
+      setSepBajando(null)
+    }
+  }
+
   /** 🔗 v0.8.0 — une original + continuación en un solo MP3 y lo baja
    * como «— completa» (v0.9.0: también con la letra adentro). */
   const [uniendoId, setUniendoId] = useState<string | null>(null)
@@ -1117,6 +1291,20 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
                   </button>
                 )}
 
+                {/* 🎚️ v0.20.0 — SEPARAR PISTAS (FASE 18): voz por un
+                    lado y música por el otro (karaoke), un
+                    instrumento solo o todo separado. */}
+                {c.estado === 'lista' && c.motor !== 'lyria' && (
+                  <button
+                    type="button"
+                    onClick={() => void abrirSeparar(c)}
+                    title="Voz por un lado, música por el otro (karaoke) o un instrumento solo"
+                    className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-neutral-300 px-3 py-2 text-[11px] font-bold text-neutral-600 transition-colors hover:border-acento/40 hover:text-acento dark:border-neutral-700 dark:text-neutral-300"
+                  >
+                    <Scissors className="h-3.5 w-3.5" /> Separar pistas — karaoke, voz sola o un instrumento
+                  </button>
+                )}
+
                 {c.estado === 'lista' && (
                   <div className="mt-3 grid grid-cols-3 gap-2">
                     <Boton variante="secundario" tamano="sm" icono={<Share2 className="h-3.5 w-3.5" />} onClick={() => compartirCancion(c)}>
@@ -1573,6 +1761,205 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
               Consume créditos como una generación · el modelo es el mismo de la original (
               {modeloSunoBonito(extModal.modelo)})
             </p>
+          </div>
+        )}
+      </Modal>
+
+      {/* 🎚️ v0.20.0 — FASE 18: MODAL SEPARAR PISTAS. Elegís el modo,
+          la app sigue la tarea y te deja escuchar/bajar cada pista. */}
+      <Modal
+        abierto={!!sepModal}
+        onCerrar={cerrarSeparar}
+        titulo={`🎚️ Separar pistas — «${sepModal?.titulo ?? ''}»`}
+      >
+        {sepModal && (
+          <div className="space-y-3">
+            {(
+              [
+                {
+                  id: 'separate_vocal',
+                  emoji: '🎤',
+                  titulo: 'Karaoke',
+                  detalle: 'La voz por un lado y la música por el otro — para cantar encima',
+                },
+                {
+                  id: 'split_stem_advanced',
+                  emoji: '🎸',
+                  titulo: 'Un instrumento',
+                  detalle: 'Solo guitarra, batería, piano… el que elijas',
+                },
+                {
+                  id: 'split_stem',
+                  emoji: '🍱',
+                  titulo: 'Todo separado',
+                  detalle: 'Hasta 12 pistas: voz, coros, batería, bajo, guitarra…',
+                },
+              ] as const
+            ).map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => {
+                  vibrar('ligera')
+                  setSepTipo(m.id)
+                }}
+                className={`w-full rounded-xl border p-3 text-left transition-colors ${
+                  sepTipo === m.id
+                    ? 'border-acento bg-acento/10'
+                    : 'border-neutral-200 hover:border-acento/40 dark:border-neutral-800'
+                }`}
+              >
+                <p className="text-sm font-bold text-neutral-900 dark:text-white">
+                  {m.emoji} {m.titulo}
+                </p>
+                <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">{m.detalle}</p>
+              </button>
+            ))}
+
+            {/* el instrumento del modo «uno solo» */}
+            {sepTipo === 'split_stem_advanced' && (
+              <div className="grid grid-cols-2 gap-2">
+                {INSTRUMENTOS_SEPARABLES.map((i) => (
+                  <button
+                    key={i.id}
+                    type="button"
+                    onClick={() => {
+                      vibrar('ligera')
+                      setSepInstrumento(i.id)
+                    }}
+                    className={`rounded-xl border px-3 py-2 text-xs font-bold transition-colors ${
+                      sepInstrumento === i.id
+                        ? 'border-acento bg-acento/10 text-acento'
+                        : 'border-neutral-200 text-neutral-600 hover:border-acento/40 dark:border-neutral-800 dark:text-neutral-300'
+                    }`}
+                  >
+                    {i.emoji} {i.nombre}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <p className="text-xs leading-relaxed text-neutral-500 dark:text-neutral-400">
+              La separación tarda un par de minutos y gasta créditos de sunoapi.org — la sigo desde acá y
+              te aviso cuando esté lista. Las pistas quedan 14 días en la API (bajalas para
+              quedártelas para siempre).
+            </p>
+
+            <Boton
+              className="w-full"
+              cargando={sepEnviando}
+              icono={<Scissors className="h-4 w-4" />}
+              onClick={() =>
+                void enviarSeparacion(sepTipo, sepTipo === 'split_stem_advanced' ? sepInstrumento : undefined)
+              }
+            >
+              {sepTipo === 'split_stem_advanced'
+                ? `Separar — solo ${INSTRUMENTOS_SEPARABLES.find((i) => i.id === sepInstrumento)?.nombre ?? ''}`
+                : sepTipo === 'split_stem'
+                  ? 'Separar todo'
+                  : 'Separar voz y música'}
+            </Boton>
+
+            {/* las separaciones de esta canción */}
+            {(() => {
+              const mias = seps.filter((s) => s.cancionId === sepModal.id)
+              if (!mias.length) return null
+              return (
+                <div className="space-y-2 border-t border-neutral-200 pt-3 dark:border-neutral-800">
+                  <h3 className="text-[11px] font-bold uppercase tracking-wide text-neutral-400">
+                    Separaciones de esta canción
+                  </h3>
+                  {mias.map((s) => (
+                    <div
+                      key={s.id}
+                      className="rounded-xl border border-neutral-200 p-3 dark:border-neutral-800"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-bold text-neutral-900 dark:text-white">
+                          {etiquetaSeparacion(s.tipo, s.instrumento)}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            vibrar('ligera')
+                            borrarSeparacion(s.id)
+                          }}
+                          aria-label="Borrar separación"
+                          className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-red-500 dark:hover:bg-neutral-800"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      {s.estado === 'procesando' && (
+                        <p className="mt-2 flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" /> separando… puede tardar un par
+                          de minutos — dejá el modal abierto
+                        </p>
+                      )}
+                      {s.estado === 'error' && (
+                        <div className="mt-2 space-y-2">
+                          <p className="text-xs text-red-500">{s.error}</p>
+                          <Boton
+                            variante="fantasma"
+                            tamano="sm"
+                            className="w-full"
+                            icono={<RefreshCw className="h-3.5 w-3.5" />}
+                            onClick={() => void enviarSeparacion(s.tipo, s.instrumento)}
+                          >
+                            Reintentar
+                          </Boton>
+                        </div>
+                      )}
+                      {s.estado === 'lista' && (
+                        <ul className="mt-2 space-y-1.5">
+                          {s.pistas.map((p) => (
+                            <li key={p.url} className="flex items-center gap-2">
+                              <span className="min-w-0 flex-1 truncate text-xs font-semibold text-neutral-700 dark:text-neutral-200">
+                                {emojiStem(p.nombreIngles)} {nombreBonitoStem(p.nombreIngles)}
+                                {p.duracionSeg ? (
+                                  <span className="ml-1 font-normal text-neutral-400">
+                                    {formatoDuracion(p.duracionSeg)}
+                                  </span>
+                                ) : null}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => alternarStem(p.url)}
+                                aria-label={sepSonando === p.url ? 'Pausar pista' : 'Reproducir pista'}
+                                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
+                                  sepSonando === p.url
+                                    ? 'bg-acento text-black'
+                                    : 'bg-acento/10 text-acento hover:bg-acento/20'
+                                }`}
+                              >
+                                {sepSonando === p.url ? (
+                                  <Pause className="h-3.5 w-3.5" />
+                                ) : (
+                                  <Play className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void descargarStem(sepModal, p)}
+                                aria-label="Descargar pista"
+                                disabled={sepBajando === p.url}
+                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-600 disabled:opacity-50 dark:bg-neutral-800 dark:text-neutral-300"
+                              >
+                                {sepBajando === p.url ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Download className="h-3.5 w-3.5" />
+                                )}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
           </div>
         )}
       </Modal>

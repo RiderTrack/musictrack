@@ -44,6 +44,15 @@ export function nombreLrc(titulo: string, version?: string): string {
   return `${nombreBaseArchivo(titulo, version)}.lrc`
 }
 
+/** v0.20.0 — nombre del MP3 de una pista separada (voz, música de
+ * karaoke, un instrumento): «Título (A) — Guitarra - MusicTrack». */
+export function nombreStem(titulo: string, pista: string, version?: string): string {
+  const t = titulo.replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, ' ').trim()
+  const p = pista.replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, ' ').trim()
+  const sufijo = version ? ` (${version})` : ''
+  return `${t || 'Mi canción'}${sufijo} — ${p || 'pista'} - MusicTrack.mp3`
+}
+
 /** Base compartida del nombre de archivo: "Título (A) - MusicTrack". */
 function nombreBaseArchivo(titulo: string, version?: string): string {
   const limpio = titulo
