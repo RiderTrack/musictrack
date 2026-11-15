@@ -10,9 +10,11 @@ import {
   limiteEstiloSuno,
   LIMITE_LETRA_SUNO,
   modeloSunoSoportaDuracion,
+  modeloSunoSoportaVoz,
   negativosAntiRanchera,
   recortarLetraParaSuno,
   type MotorSuno,
+  type VozPersonal,
 } from '@/core/ai/suno'
 import { pedirPermisoNotificaciones, programarRecordatorio } from '@/core/notificaciones/notificaciones'
 import { generarMusicaLyria, armarPromptLyria, type MotorLyria } from '@/core/ai/lyria'
@@ -197,6 +199,15 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
   const negativosPrevistos =
     motor === 'suno' ? negativosAntiRanchera(estiloPrevisto, ajustes.modeloSuno) : undefined
   const [instrumental, setInstrumental] = useState(false)
+  // 🎤 v0.17.0 — FASE 14: la voz personal (se crea en Ajustes →
+  // «Mi voz», dos audios cortos). Con el interruptor prendido,
+  // el voiceId viaja a Suno como personaId y la canción sale
+  // cantada por el usuario. Solo aplica con motor Suno,
+  // modelo V6 y canción cantada (no instrumental).
+  const [miVoz] = useState(() => leer<VozPersonal | null>('voz_suno', null))
+  const [usarMiVoz, setUsarMiVoz] = useState(false)
+  const miVozAplica =
+    motor === 'suno' && !!miVoz && modeloSunoSoportaVoz(ajustes.modeloSuno) && !instrumental
   const [cargando, setCargando] = useState(false)
 
   // ⏱️ v0.8.0 — DURACIÓN: 'auto' (Suno decide, como siempre),
@@ -422,6 +433,27 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
     alternarTag(tag)
   }
 
+  // 🎤 v0.17.0 — FASE 14: alternar la voz personal. Sin voz
+  // creada → lleva a Ajustes; con instrumental → lo apaga (una
+  // cosa excluye a la otra); modelo viejo → avisa y no prende.
+  function alternarMiVoz() {
+    vibrar()
+    if (!miVoz) {
+      mostrar('Tu voz se crea en Ajustes → 🎤 Mi voz — dos grabaciones cortas y queda lista', 'info', 5000)
+      irA('ajustes')
+      return
+    }
+    if (!modeloSunoSoportaVoz(ajustes.modeloSuno)) {
+      mostrar('Tu voz necesita el modelo V6 — cambialo en Ajustes', 'info', 4500)
+      return
+    }
+    if (!usarMiVoz && instrumental) {
+      setInstrumental(false)
+      mostrar('Apagué «solo instrumental» — esta canción va cantada con tu voz 🎤', 'info', 4000)
+    }
+    setUsarMiVoz((v) => !v)
+  }
+
   // 🍱 v0.14.0 — aplicar una RECETA completa: reemplaza el estilo
   // entero con el combo armado (género + todos los instrumentos +
   // carácter + tempo). Como las partes usan los mismos nombres que
@@ -457,6 +489,17 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
     const textoLimpio = texto.trim()
     if (!instrumental && textoLimpio.length < 20) {
       mostrar('Elegí una letra de tu biblioteca o pegála (mínimo unas líneas)', 'info', 3500)
+      return
+    }
+    // 🎤 v0.17.0 — FASE 14: si pidió su voz, que todo esté en
+    // condiciones ANTES de gastar créditos (mejor un aviso claro
+    // que un pedido a medias).
+    if (usarMiVoz && miVoz && instrumental) {
+      mostrar('🎤 «Solo instrumental» no tiene voz — apagalo para cantar con la tuya', 'info', 4500)
+      return
+    }
+    if (usarMiVoz && miVoz && !modeloSunoSoportaVoz(ajustes.modeloSuno)) {
+      mostrar('🎤 Tu voz necesita el modelo V6 — cambialo en Ajustes o desactivá «Cantar con mi voz»', 'info', 5000)
       return
     }
     const tituloLimpio = titulo.trim() || 'Mi canción'
@@ -511,6 +554,10 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
         instrumental,
         modelo: ajustes.modeloSuno,
         duracionSeg,
+        // 🎤 v0.17.0 — FASE 14: la voz personal viaja como
+        // personaId (solo si está todo en condiciones — la
+        // función misma vuelve a filtrar por modelo/instrumental).
+        ...(usarMiVoz && miVoz && !instrumental ? { vozId: miVoz.voiceId } : {}),
       })
       const nuevas: Cancion[] = pistas
         .filter((p) => p.taskId)
@@ -538,7 +585,13 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
           for (const n of nuevas) if (n.taskId) void programarRecordatorio(n.taskId, tituloLimpio)
         }
       })()
-      mostrar(`${nuevas.length} ${nuevas.length === 1 ? 'versión' : 'versiones'} en el horno 🔥 — las seguís en 📚 Biblioteca`, 'ok', 5000)
+      mostrar(
+        `${nuevas.length} ${nuevas.length === 1 ? 'versión' : 'versiones'} en el horno 🔥${
+          usarMiVoz && miVoz && !instrumental ? ' cantadas con TU voz 🎤' : ''
+        } — las seguís en 📚 Biblioteca`,
+        'ok',
+        5000,
+      )
     } catch (e) {
       mostrar(e instanceof Error ? e.message : 'Falló Suno', 'error', 4500)
     } finally {
@@ -998,6 +1051,50 @@ export function MusicaView({ irA }: { irA: (p: PestannaId) => void }) {
                   )
                 })}
               </GrupoPlegable>
+
+              {/* 🎤 v0.17.0 — FASE 14 (pedido de Rudy): TU PROPIA
+                  VOZ. Se crea en Ajustes → «Mi voz» (dos audios
+                  cortos) y este interruptor la manda a Suno como
+                  personaId: la canción sale cantada por vos.
+                  Requiere modelo V6 y canción cantada. */}
+              {motor === 'suno' && (
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={usarMiVoz && !!miVoz && modeloSunoSoportaVoz(ajustes.modeloSuno)}
+                  onClick={alternarMiVoz}
+                  className="flex w-full items-center justify-between gap-3 rounded-xl border border-neutral-200 px-3 py-2.5 text-left transition-colors hover:border-acento/60 dark:border-neutral-800"
+                >
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-neutral-700 dark:text-neutral-200">
+                      🎤 Cantar con mi voz
+                    </span>
+                    <span className="mt-0.5 block text-[10px] leading-relaxed text-neutral-400">
+                      {miVoz
+                        ? modeloSunoSoportaVoz(ajustes.modeloSuno)
+                          ? `«${miVoz.nombre}» · creada el ${new Date(miVoz.fecha).toLocaleDateString('es-PE', { day: 'numeric', month: 'short' })} — la canción sale con tu timbre`
+                          : `«${miVoz.nombre}» necesita modelo V6 — estás en ${modeloSunoBonito(ajustes.modeloSuno)}`
+                        : 'Todavía no la creaste — tocá y te llevo a Ajustes (2 grabaciones cortas)'}
+                    </span>
+                  </span>
+                  <span
+                    className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                      usarMiVoz && miVoz ? 'bg-acento' : 'bg-neutral-300 dark:bg-neutral-700'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                        usarMiVoz && miVoz ? 'left-[22px]' : 'left-0.5'
+                      }`}
+                    />
+                  </span>
+                </button>
+              )}
+              {motor === 'suno' && usarMiVoz && miVoz && miVozAplica && (
+                <p className="text-[10px] leading-relaxed text-acento">
+                  ✓ Sale cantada con TU voz — los chips de voz de arriba quedan de lado: Suno usa tu timbre.
+                </p>
+              )}
 
               {/* 🎤 v0.16.0 — FASE 13 (pedido de Rudy): perfiles de
                   voz criolla. Suno no acepta nombres de artistas

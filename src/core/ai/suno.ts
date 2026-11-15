@@ -704,12 +704,23 @@ export async function generarMusica(
     instrumental: boolean
     modelo: string
     duracionSeg?: number
+    /** 🎤 v0.17.0 — FASE 14: voiceId de la voz personal del
+     * usuario (se crea en Ajustes → «Mi voz»). Solo viaja en
+     * canciones cantadas y con la familia V6 — en los otros
+     * casos ni se manda (la API lo rechazaría). */
+    vozId?: string
   },
 ): Promise<PistaSuno[]> {
   // duration solo vale en customMode y en modelos que lo soportan;
   // en los otros ni se manda (la API podría rechazar el pedido).
   const duracion =
     op.duracionSeg && op.duracionSeg >= 10 && modeloSunoSoportaDuracion(op.modelo) ? op.duracionSeg : undefined
+  // 🎤 v0.17.0 — FASE 14: la voz personal viaja como personaId +
+  // personaModel 'voice_persona' (docs.sunoapi.org: solo V6,
+  // V6_MINI y V6_WILD). En instrumental no hay voz que clonar y
+  // en modelos viejos el parámetro no existe: ni se manda.
+  const persona =
+    op.vozId && !op.instrumental && modeloSunoSoportaVoz(op.modelo) ? op.vozId : undefined
   // 🩹 v0.8.1 — red de seguridad: por más que la UI ya recorte,
   // acá NUNCA se manda una letra de más de 5.000 caracteres (la
   // API la rechaza entera y se pierden los créditos del intento).
@@ -744,6 +755,10 @@ export async function generarMusica(
       ...(negativosAntiRanchera(op.estilo, op.modelo)
         ? { negativeTags: negativosAntiRanchera(op.estilo, op.modelo) }
         : {}),
+      // 🎤 v0.17.0 — FASE 14: con TU voz. Suno recibe el personaId
+      // de la voz creada en Ajustes y canta la canción con tu
+      // timbre (docs: personaModel 'voice_persona', familia V6).
+      ...(persona ? { personaId: persona, personaModel: 'voice_persona' } : {}),
       ...(duracion ? { duration: duracion } : {}),
       callBackUrl: CALLBACK_URL,
     }),
@@ -940,4 +955,194 @@ export async function consultarPistas(
     p.estado = p.urlAudio ? 'lista' : 'generando'
     return p
   })
+}
+
+// ═══════════════════════════════════════════════════════════
+// 🎤 v0.17.0 — FASE 14: MI VOZ (Suno Voice API). El usuario
+// graba DOS audios cortos y Suno arma su perfil de voz; desde
+// ahí, las canciones pueden salir cantadas por él (se manda el
+// voiceId como personaId en /generate — ver generarMusica).
+//
+// El flujo (docs.sunoapi.org, sección Voice):
+//   1. subirAudioVoz — el audio va al hosting temporal de la API
+//      (vive 3 días, de sobra) y devuelve una URL pública: la
+//      API no acepta el archivo directo, pide voiceUrl/verifyUrl.
+//   2. iniciarValidacionVoz — la API ESCUCHA la muestra (canta o
+//      habla, sin música de fondo) y prepara una frase de
+//      verificación en español.
+//   3. consultarFraseVoz — polling hasta que la frase llega.
+//   4. el usuario CANTA esa frase (docs: cantada funciona mejor
+//      que hablada) y se sube igual que la muestra.
+//   5. crearVozPersonal — la API cruza muestra + frase cantada y
+//      crea la voz (devuelve un taskId NUEVO).
+//   6. consultarVozCreada — polling hasta el voiceId.
+// Nosotros usamos polling en todos los pasos (mismo patrón que
+// las canciones): el callBackUrl viaja solo para satisfacer la
+// validación de la API.
+// ═══════════════════════════════════════════════════════════
+
+/** La voz personal creada con Suno Voice — se guarda en el
+ * dispositivo (clave `voz_suno`) y viaja a /generate como
+ * personaId. `taskId` es el de la CREACIÓN: lo pide el
+ * check-voice de disponibilidad. */
+export interface VozPersonal {
+  voiceId: string
+  taskId: string
+  nombre: string
+  fecha: number
+}
+
+/** Creación en curso (clave `voz_tarea`): permite RETOMAR el
+ * flujo si el usuario cambia de pestaña o cierra la app a mitad
+ * de camino — la tarea sigue viva del lado de la API. */
+export interface TareaVozSuno {
+  etapa: 'frase' | 'creando'
+  taskId: string
+  inicio: number
+  frase?: string
+}
+
+/** ¿El modelo acepta generar con voz personal? (docs: solo la
+ * familia V6 — V5 y V5_5 están discontinuados). */
+export function modeloSunoSoportaVoz(modelo: string): boolean {
+  return /^V6/.test(modelo)
+}
+
+/** Traduce los errores propios del flujo de voz (llegan en
+ * inglés) a criollo entendible. Los desconocidos pasan tal cual. */
+function traducirErrorVoz(msg: string): string {
+  const m = msg.toLowerCase()
+  if (m.includes('verification') || m.includes('verify') || m.includes('not match'))
+    return 'la verificación de tu voz no coincidió — grabate cantando la frase bien clara, sin ruido de fondo, y probá de nuevo'
+  if (m.includes('no voice') || m.includes('vocal') || m.includes('instrument') || m.includes('speech'))
+    return 'la API no encontró tu voz en el audio — probá con una grabación donde se oiga SOLO tu voz, sin música'
+  if (m.includes('expire'))
+    return 'la tarea expiró — empezá de nuevo con una muestra nueva'
+  return msg ? `Suno API: ${msg}` : 'la tarea de voz falló — probá de nuevo'
+}
+
+/** Blob → data URL (base64) — el formato que acepta el upload. */
+function blobADataUrl(audio: Blob): Promise<string> {
+  return new Promise((resolver, rechazar) => {
+    const lector = new FileReader()
+    lector.onload = () => resolver(lector.result as string)
+    lector.onerror = () => rechazar(new Error('no pude leer el audio grabado'))
+    lector.readAsDataURL(audio)
+  })
+}
+
+/** Sube un audio al hosting temporal de la API y devuelve su URL
+ * pública (los archivos viven 3 días — alcanza de sobra para el
+ * flujo de voz). Base64 está recomendado hasta ~10 MB (docs);
+ * más que eso se recorta del lado del que graba. */
+export async function subirAudioVoz(motor: MotorSuno, audio: Blob): Promise<string> {
+  if (audio.size > 9_000_000)
+    throw new Error('el audio pesa más de 10 MB — grabá algo más corto y volvé a probar')
+  const r = await pedir(motor, '/api/file-base64-upload', {
+    method: 'POST',
+    body: JSON.stringify({
+      base64Data: await blobADataUrl(audio),
+      uploadPath: 'musictrack/voz',
+      fileName: `audio-${Date.now()}`,
+    }),
+  })
+  // formato tolerante: data.downloadUrl | data.url (por si mueven el sobre)
+  const d = (r.data ?? {}) as Record<string, unknown>
+  const url = d.downloadUrl ?? d.url
+  if (typeof url !== 'string' || !url)
+    throw new Error('la API no devolvió la URL del audio subido')
+  return url
+}
+
+/** Paso 1 — arranca el análisis: la API escucha la muestra
+ * (0 → `segundos`, con tope de 30 que es más que suficiente)
+ * y prepara la frase de verificación. Devuelve el taskId. */
+export async function iniciarValidacionVoz(
+  motor: MotorSuno,
+  urlAudio: string,
+  segundos: number,
+): Promise<string> {
+  const r = await pedir(motor, '/api/v1/voice/validate', {
+    method: 'POST',
+    body: JSON.stringify({
+      voiceUrl: urlAudio,
+      vocalStartS: 0,
+      vocalEndS: Math.max(3, Math.min(Math.ceil(segundos), 30)),
+      language: 'es',
+      callBackUrl: CALLBACK_URL,
+    }),
+  })
+  const d = (r.data ?? {}) as Record<string, unknown>
+  if (typeof d.taskId !== 'string' || !d.taskId)
+    throw new Error('la API no devolvió la tarea de validación')
+  return d.taskId
+}
+
+/** Paso 2 — consulta la frase de verificación. `frase` llega
+ * llena cuando está lista (estado wait_validating); mientras la
+ * API trabaja llega null. Si la tarea falló, viene `error`. */
+export async function consultarFraseVoz(
+  motor: MotorSuno,
+  taskId: string,
+): Promise<{ frase: string | null; estado: string; error?: string }> {
+  const r = await pedir(motor, `/api/v1/voice/validate-info?taskId=${encodeURIComponent(taskId)}`)
+  const d = (r.data ?? null) as Record<string, unknown> | null
+  if (!d || typeof d !== 'object' || !Object.keys(d).length)
+    return { frase: null, estado: 'wait_processing' }
+  const estado = String(d.status ?? 'wait_processing')
+  if (estado.includes('fail'))
+    return { frase: null, estado, error: traducirErrorVoz(String(d.errorMessage ?? '')) }
+  const frase =
+    typeof d.validateInfo === 'string' && d.validateInfo.trim() ? d.validateInfo.trim() : null
+  return { frase, estado }
+}
+
+/** Paso 3 — crea la voz con la grabación de la frase cantada.
+ * Devuelve el taskId NUEVO de la creación (distinto del de la
+ * validación). */
+export async function crearVozPersonal(
+  motor: MotorSuno,
+  op: { taskIdValidacion: string; urlVerificacion: string; nombre: string },
+): Promise<string> {
+  const r = await pedir(motor, '/api/v1/voice/generate', {
+    method: 'POST',
+    body: JSON.stringify({
+      taskId: op.taskIdValidacion,
+      verifyUrl: op.urlVerificacion,
+      voiceName: op.nombre,
+      callBackUrl: CALLBACK_URL,
+    }),
+  })
+  const d = (r.data ?? {}) as Record<string, unknown>
+  if (typeof d.taskId !== 'string' || !d.taskId)
+    throw new Error('la API no devolvió la tarea de creación de tu voz')
+  return d.taskId
+}
+
+/** Paso 4 — sigue la creación de la voz: `voiceId` llega cuando
+ * la tarea termina bien (estado success); si falla, `error`. */
+export async function consultarVozCreada(
+  motor: MotorSuno,
+  taskId: string,
+): Promise<{ voiceId: string | null; estado: string; error?: string }> {
+  const r = await pedir(motor, `/api/v1/voice/record-info?taskId=${encodeURIComponent(taskId)}`)
+  const d = (r.data ?? null) as Record<string, unknown> | null
+  if (!d || typeof d !== 'object' || !Object.keys(d).length)
+    return { voiceId: null, estado: 'wait_processing' }
+  const estado = String(d.status ?? 'wait_processing')
+  if (estado.includes('fail'))
+    return { voiceId: null, estado, error: traducirErrorVoz(String(d.errorMessage ?? '')) }
+  const voiceId = typeof d.voiceId === 'string' && d.voiceId ? d.voiceId : null
+  return { voiceId, estado }
+}
+
+/** ¿La voz sigue disponible en la cuenta de sunoapi.org?
+ * (check-voice — para el botón «Verificar» de Ajustes). */
+export async function vozDisponible(motor: MotorSuno, taskId: string): Promise<boolean> {
+  const r = await pedir(motor, '/api/v1/voice/check-voice', {
+    method: 'POST',
+    body: JSON.stringify({ task_id: taskId }),
+  })
+  const d = (r.data ?? {}) as Record<string, unknown>
+  return d.isAvailable === true
 }
