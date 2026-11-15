@@ -55,6 +55,17 @@ function base(url: string): string {
 // la web de la app solo para satisfacer la validación de la API.
 const CALLBACK_URL = 'https://ridertrack.github.io/musictrack/'
 
+// 🔧 v0.19.1 — FASE 17 (bug que encontró Rudy): el File Upload API
+// NO vive en api.sunoapi.org — ahí /api/file-base64-upload responde
+// 404 y la creación de la voz moría en el PRIMER paso (subir la
+// grabación). Según la doc (docs.sunoapi.org → File Upload API), la
+// subida de archivos tiene host PROPIO: comparte la misma clave
+// Bearer, responde el mismo formato {code, msg, data} y acepta CORS
+// desde cualquier origen (verificado a mano: POST sin clave → code
+// 401; OPTIONS → access-control-allow-origin: *). Los archivos
+// subidos viven 3 días, de sobra para el flujo de voz.
+const HOST_ARCHIVOS_SUNO = 'https://sunoapiorg.redpandaai.co'
+
 /** Traduce los errores más comunes de sunoapi.org (llegan en
  * inglés) para que el toast se entienda a la primera.
  * Los desconocidos pasan sin tocar. */
@@ -62,6 +73,10 @@ function traducirErrorSuno(msg: string): string {
   const m = msg.toLowerCase()
   if (m.includes('unauthorized') || m.includes('authentication failed'))
     return 'clave de Suno inválida o expirada — pegála de nuevo en Ajustes'
+  // 🔧 v0.19.1 — el 404 que le salió a Rudy: dirección que la API
+  // ya no conoce (host o ruta movidos) → mensaje accionable.
+  if (m.includes('404') || m.includes('not found'))
+    return 'la API no encontró esa dirección (404) — revisá la URL base en Ajustes o actualizá la app a la última versión'
   if (m.includes('callbackurl'))
     return 'la API pide la URL de callback (ya corregida — actualizá tu APK desde Releases)'
   if (m.includes('insufficient') || m.includes('credit'))
@@ -75,10 +90,17 @@ function traducirErrorSuno(msg: string): string {
   return msg
 }
 
-async function pedir(motor: MotorSuno, ruta: string, init?: RequestInit): Promise<RespuestaSuno> {
+async function pedir(
+  motor: MotorSuno,
+  ruta: string,
+  init?: RequestInit,
+  /** 🔧 v0.19.1 — origen alternativo (p. ej. el host de archivos
+   * de sunoapi.org); por defecto, la URL configurada del motor. */
+  origen?: string,
+): Promise<RespuestaSuno> {
   let resp: Response
   try {
-    resp = await fetch(`${base(motor.url)}${ruta}`, {
+    resp = await fetch(`${base(origen ?? motor.url)}${ruta}`, {
       ...init,
       headers: {
         'content-type': 'application/json',
@@ -1060,9 +1082,10 @@ export async function consultarPistas(
 // voiceId como personaId en /generate — ver generarMusica).
 //
 // El flujo (docs.sunoapi.org, sección Voice):
-//   1. subirAudioVoz — el audio va al hosting temporal de la API
-//      (vive 3 días, de sobra) y devuelve una URL pública: la
-//      API no acepta el archivo directo, pide voiceUrl/verifyUrl.
+//   1. subirAudioVoz — el audio va al File Upload API (host propio
+//      de sunoapi.org, v0.19.1; vive 3 días, de sobra) y devuelve una
+//      URL pública: la API no acepta el archivo directo, pide
+//      voiceUrl/verifyUrl.
 //   2. iniciarValidacionVoz — la API ESCUCHA la muestra (canta o
 //      habla, sin música de fondo) y prepara una frase de
 //      verificación en español.
@@ -1127,21 +1150,27 @@ function blobADataUrl(audio: Blob): Promise<string> {
   })
 }
 
-/** Sube un audio al hosting temporal de la API y devuelve su URL
- * pública (los archivos viven 3 días — alcanza de sobra para el
- * flujo de voz). Base64 está recomendado hasta ~10 MB (docs);
- * más que eso se recorta del lado del que graba. */
+/** Sube un audio al File Upload API de sunoapi.org (host propio,
+ * ver HOST_ARCHIVOS_SUNO) y devuelve su URL pública (los archivos
+ * viven 3 días — alcanza de sobra para el flujo de voz). Base64
+ * está recomendado hasta ~10 MB (docs); más que eso se recorta del
+ * lado del que graba. */
 export async function subirAudioVoz(motor: MotorSuno, audio: Blob): Promise<string> {
   if (audio.size > 9_000_000)
     throw new Error('el audio pesa más de 10 MB — grabá algo más corto y volvé a probar')
-  const r = await pedir(motor, '/api/file-base64-upload', {
-    method: 'POST',
-    body: JSON.stringify({
-      base64Data: await blobADataUrl(audio),
-      uploadPath: 'musictrack/voz',
-      fileName: `audio-${Date.now()}`,
-    }),
-  })
+  const r = await pedir(
+    motor,
+    '/api/file-base64-upload',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        base64Data: await blobADataUrl(audio),
+        uploadPath: 'musictrack/voz',
+        fileName: `audio-${Date.now()}`,
+      }),
+    },
+    HOST_ARCHIVOS_SUNO,
+  )
   // formato tolerante: data.downloadUrl | data.url (por si mueven el sobre)
   const d = (r.data ?? {}) as Record<string, unknown>
   const url = d.downloadUrl ?? d.url
