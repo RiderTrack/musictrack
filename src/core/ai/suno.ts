@@ -1285,10 +1285,23 @@ export async function vozDisponible(motor: MotorSuno, taskId: string): Promise<b
 // Nosotros mandamos taskId+audioId de la canción (el audioId afina
 // la versión exacta A o B), el callBackUrl de siempre (solo para
 // satisfacer la validación — acá también usamos polling).
+//
+// 🩹 v0.22.0 — EL BUG QUE ENCONTRÓ RUDY («la API terminó pero no
+// trajo pistas»): la página de CALLBACKS de la doc revela que el
+// modo «un instrumento» (split_stem_advanced) devuelve cada item
+// de originData ANIDADO: {extract: el instrumento solo, remove:
+// la canción sin él} — nada de audio_url plano. El parser viejo
+// no veía NINGUNA pista y el SUCCESS llegaba con las manos vacías.
+// Ahora stemsDesdeRespuesta acepta TODO: items planos, anidados
+// (extract/remove), snake_case y camelCase.
 // ═══════════════════════════════════════════════════════════
 
-/** Los tres modos de separación que ofrece la API. */
-export type TipoSeparacion = 'separate_vocal' | 'split_stem' | 'split_stem_advanced'
+/** Los modos de separación. Los tres primeros son los `type` de
+ * la API; `solo_voz` es un modo DE LA APP (pedido de Rudy): viaja
+ * a la API como `separate_vocal` (10 créditos, el más barato) y al
+ * mostrar se ordena para que la VOZ salga primera — así «solo la
+ * voz» y «karaoke» son la misma llamada barata con distinta cara. */
+export type TipoSeparacion = 'separate_vocal' | 'split_stem' | 'split_stem_advanced' | 'solo_voz'
 
 /** Una pista ya separada (un "stem") con su URL para escuchar/bajar. */
 export interface PistaSeparada {
@@ -1298,12 +1311,17 @@ export interface PistaSeparada {
   nombreIngles: string
   url: string
   duracionSeg?: number
+  /** 🩹 v0.22.0 — true en los stems «remove» del modo avanzado:
+   * la canción SIN ese instrumento (se muestra «Sin Guitarra»). */
+  esResto?: boolean
 }
 
 /** Instrumentos que se pueden pedir SOLOS (modo avanzado). Los
- * nombres son los que espera `stemName` (docs.sunoapi.org). */
+ * nombres son los que espera `stemName` (docs.sunoapi.org).
+ * 🩹 v0.22.0 — la voz principal sale de acá: ahora tiene SU tarjeta
+ * propia («Solo la voz») que usa el karaoke barato (10 vs 20
+ * créditos) y trae la voz YA aislada. */
 export const INSTRUMENTOS_SEPARABLES: ReadonlyArray<{ id: string; nombre: string; emoji: string }> = [
-  { id: 'Lead Vocal', nombre: 'Voz principal', emoji: '🎤' },
   { id: 'Drum Kit', nombre: 'Batería', emoji: '🥁' },
   { id: 'Guitar', nombre: 'Guitarra', emoji: '🎸' },
   { id: 'Bass', nombre: 'Bajo', emoji: '🎸' },
@@ -1355,6 +1373,7 @@ export function emojiStem(nombre: string): string {
 
 /** Etiqueta corta del modo elegido (para el historial). */
 export function etiquetaSeparacion(tipo: TipoSeparacion, instrumento?: string): string {
+  if (tipo === 'solo_voz') return '🎙️ Solo la voz (acapella)'
   if (tipo === 'separate_vocal') return '🎤 Karaoke — voz + música'
   if (tipo === 'split_stem') return '🍱 Todo separado'
   return `${INSTRUMENTOS_SEPARABLES.find((i) => i.id === instrumento)?.emoji ?? '🎸'} Solo ${
@@ -1372,13 +1391,17 @@ export async function separarPistas(
   if (!op.taskId && !op.audioId) throw new Error('esa canción no tiene id de Suno — no puedo separarla')
   if (op.tipo === 'split_stem_advanced' && !op.instrumento)
     throw new Error('elegí qué instrumento querés separar')
+  // «solo la voz» es modo de la APP: a la API le pedimos el karaoke
+  // barato (separate_vocal, 10 créditos) que trae voz Y música —
+  // al mostrar, ordenarPistasPorModo pone la voz primera.
+  const tipoApi = op.tipo === 'solo_voz' ? 'separate_vocal' : op.tipo
   const r = await pedir(motor, '/api/v1/vocal-removal/generate', {
     method: 'POST',
     body: JSON.stringify({
       ...(op.taskId ? { taskId: op.taskId } : {}),
       ...(op.audioId ? { audioId: op.audioId } : {}),
-      type: op.tipo,
-      ...(op.tipo === 'split_stem_advanced' ? { stemName: op.instrumento } : {}),
+      type: tipoApi,
+      ...(tipoApi === 'split_stem_advanced' ? { stemName: op.instrumento } : {}),
       callBackUrl: CALLBACK_URL,
     }),
   })
@@ -1388,22 +1411,61 @@ export async function separarPistas(
   return d.taskId
 }
 
-/** Los stems que contesta la API cuando ya están: primero la
- * lista completa (originData, con id por pista — la pide el WAV
- * después); si viniera vacía, se arma con las URLs sueltas
- * (vocalUrl, instrumentalUrl, drumsUrl…) que trae el mismo sobre. */
+/** Los stems que contesta la API cuando ya están. 🩹 v0.22.0 —
+ * parser TOLERANTE (el viejo se perdía las pistas del modo «un
+ * instrumento»):
+ *   1. originData plano — {id, audio_url, stem_type_group_name,
+ *      duration} (karaoke y todo-separado, ejemplo oficial de la
+ *      doc del record-info); también camelCase por las dudas.
+ *   2. originData ANIDADO — {extract: {…}, remove: {…}} (modo
+ *      avanzado, revelado por la doc de callbacks): extract es el
+ *      instrumento SOLO y remove la canción SIN él.
+ *   3. respaldo: URLs sueltas con nombre — camelCase (vocalUrl…)
+ *      o snake_case anidadas en vocal_removal_info (formato del
+ *      callback: vocal_url, drums_url…).
+ * Sin duplicados: cada URL entra una sola vez. */
 function stemsDesdeRespuesta(resp: Record<string, unknown>): PistaSeparada[] {
-  const originData = Array.isArray(resp.originData) ? (resp.originData as Array<Record<string, unknown>>) : []
-  const pistas = originData
-    .filter((o) => typeof o.audio_url === 'string' && o.audio_url)
-    .map((o) => ({
+  const salida: PistaSeparada[] = []
+  const vistas = new Set<string>()
+  const agregar = (o: Record<string, unknown>, esResto = false) => {
+    const url = o.audio_url ?? o.audioUrl
+    if (typeof url !== 'string' || !url || vistas.has(url)) return
+    vistas.add(url)
+    salida.push({
       id: String(o.id ?? ''),
-      nombreIngles: String(o.stem_type_group_name ?? ''),
-      url: String(o.audio_url),
+      nombreIngles: String(o.stem_type_group_name ?? o.stemTypeGroupName ?? ''),
+      url,
       duracionSeg: typeof o.duration === 'number' ? o.duration : undefined,
-    }))
-  if (pistas.length) return pistas
-  // respaldo: URLs nombradas (Vocals, Instrumental, Drums…)
+      ...(esResto ? { esResto: true } : {}),
+    })
+  }
+
+  // 1+2) originData — plano o anidado (extract/remove)
+  const origen = Array.isArray(resp.originData)
+    ? (resp.originData as unknown[])
+    : Array.isArray(resp.origin_data)
+      ? (resp.origin_data as unknown[])
+      : []
+  for (const item of origen) {
+    if (!item || typeof item !== 'object') continue
+    const o = item as Record<string, unknown>
+    const extracto = o.extract
+    const resto = o.remove
+    if (extracto && typeof extracto === 'object') {
+      agregar(extracto as Record<string, unknown>) // 🎸 el instrumento SOLO
+      if (resto && typeof resto === 'object') agregar(resto as Record<string, unknown>, true) // ➖ la canción SIN él
+    } else {
+      agregar(o)
+    }
+  }
+
+  // 3) respaldo: URLs nombradas (Vocals, Instrumental, Drums…),
+  //    camelCase del record-info o snake_case del callback
+  const sobre =
+    resp.vocal_removal_info && typeof resp.vocal_removal_info === 'object'
+      ? (resp.vocal_removal_info as Record<string, unknown>)
+      : resp
+  const aSnake = (c: string) => c.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`)
   const directos: Array<[string, string]> = [
     ['vocalUrl', 'Vocals'],
     ['instrumentalUrl', 'Instrumental'],
@@ -1419,13 +1481,36 @@ function stemsDesdeRespuesta(resp: Record<string, unknown>): PistaSeparada[] {
     ['woodwindsUrl', 'Woodwinds'],
     ['fxUrl', 'FX/Other'],
   ]
-  return directos
-    .filter(([campo]) => typeof resp[campo] === 'string' && resp[campo])
-    .map(([campo, nombre]) => {
-      const url = String(resp[campo])
-      // el id del stem viaja en el nombre del archivo (…_<id>_Vocals.mp3)
-      return { id: url.split('/').pop()?.replace(/\.mp3$/i, '') ?? '', nombreIngles: nombre, url }
-    })
+  for (const [campo, nombre] of directos) {
+    const v = sobre[campo] ?? sobre[aSnake(campo)]
+    if (typeof v !== 'string' || !v || vistas.has(v)) continue
+    vistas.add(v)
+    // el id del stem viaja en el nombre del archivo (…_<id>_Vocals.mp3)
+    salida.push({ id: v.split('/').pop()?.replace(/\.mp3$/i, '') ?? '', nombreIngles: nombre, url: v })
+  }
+  return salida
+}
+
+/** 🩹 v0.22.0 — ordena los stems para que salga PRIMERO lo que
+ * pediste: en «solo la voz» la voz (acapella), en karaoke la
+ * música. Los demás modos quedan como vienen. */
+export function ordenarPistasPorModo(pistas: PistaSeparada[], tipo: TipoSeparacion): PistaSeparada[] {
+  const peso = (p: PistaSeparada): number => {
+    const n = p.nombreIngles.trim().toLowerCase()
+    const esVoz = n === 'vocals' || n === 'lead vocal' || n === 'vocal'
+    const esMusica = n === 'instrumental'
+    if (tipo === 'solo_voz') return esVoz ? 0 : esMusica ? 1 : 2
+    if (tipo === 'separate_vocal') return esMusica ? 0 : esVoz ? 1 : 2
+    return 0
+  }
+  return [...pistas].sort((a, b) => peso(a) - peso(b))
+}
+
+/** 🩹 v0.22.0 — etiqueta lista para mostrar (y bautizar el archivo
+ * descargado) de una pista: los stems «remove» se leen «Sin
+ * Guitarra» en vez del nombre del instrumento repetido. */
+export function etiquetaPista(p: PistaSeparada): string {
+  return p.esResto ? `Sin ${nombreBonitoStem(p.nombreIngles)}` : nombreBonitoStem(p.nombreIngles)
 }
 
 /** Sigue una separación en curso: `lista` con las pistas cuando
@@ -1444,8 +1529,20 @@ export async function consultarSeparacion(
   // CALLBACK_EXCEPTION no es culpa nuestra (usamos polling): si ya
   // hay pistas, están listas igual que con las canciones.
   if (pistas.length) return { estado: 'lista', pistas }
-  if (exito === 'SUCCESS')
-    return { estado: 'error', pistas: [], error: 'la API terminó pero no trajo pistas — probá de nuevo' }
+  if (exito === 'SUCCESS') {
+    // 🩹 v0.22.0 — si volviera a pasar, el error ahora lleva las
+    // claves que SÍ respondió la API: con eso se ajusta el parser
+    // a la primera (antes era un «probá de nuevo» a ciegas).
+    const claves = Object.keys(resp)
+      .filter((k) => resp[k] !== null && resp[k] !== undefined && resp[k] !== '')
+      .slice(0, 6)
+      .join(', ')
+    return {
+      estado: 'error',
+      pistas: [],
+      error: `la API terminó pero no pude leer las pistas${claves ? ` (respondió: ${claves})` : ''} — probá de nuevo y avisale a tu asistente si sigue`,
+    }
+  }
   if (exito === 'CREATE_TASK_FAILED' || exito === 'GENERATE_AUDIO_FAILED')
     return {
       estado: 'error',

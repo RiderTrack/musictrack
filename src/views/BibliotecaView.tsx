@@ -49,10 +49,11 @@ import {
   consultarSeparacion,
   creditosRestantes,
   emojiStem,
+  etiquetaPista,
   etiquetaSeparacion,
   extenderMusica,
   INSTRUMENTOS_SEPARABLES,
-  nombreBonitoStem,
+  ordenarPistasPorModo,
   pedirLetraSincronizada,
   restanteDeLetra,
   separarPistas,
@@ -687,7 +688,12 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
   const [seps, setSeps] = useState<Separacion[]>(() => leerSeparaciones())
   const [sepModal, setSepModal] = useState<Cancion | null>(null)
   const [sepTipo, setSepTipo] = useState<TipoSeparacion>('separate_vocal')
-  const [sepInstrumento, setSepInstrumento] = useState(INSTRUMENTOS_SEPARABLES[2].id) // Guitarra
+  // 🩹 v0.22.0 — la voz principal salió del catálogo (tiene su
+  // tarjeta propia «Solo la voz»), así que Guitar ya no es [2]:
+  // se busca por id para que el default no se corra nunca más.
+  const [sepInstrumento, setSepInstrumento] = useState(
+    INSTRUMENTOS_SEPARABLES.find((i) => i.id === 'Guitar')?.id ?? INSTRUMENTOS_SEPARABLES[0].id,
+  )
   const [sepEnviando, setSepEnviando] = useState(false)
   const [sepSonando, setSepSonando] = useState<string | null>(null)
   const [sepBajando, setSepBajando] = useState<string | null>(null)
@@ -773,7 +779,12 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
           const r = await consultarSeparacion(motor, s.id)
           if (!vivo) return
           if (r.estado === 'lista') {
-            actualizarSeparacion(s.id, { estado: 'lista', pistas: r.pistas })
+            actualizarSeparacion(s.id, {
+              estado: 'lista',
+              // 🩹 v0.22.0 — lo que pedís sale PRIMERO: la voz en
+              // «solo la voz», la música en karaoke.
+              pistas: ordenarPistasPorModo(r.pistas, s.tipo),
+            })
             vibrar()
             mostrar('¡Pistas listas! 🎚️ — escuchalas y bajá las que quieras', 'ok', 4500)
           } else if (r.estado === 'error') {
@@ -829,7 +840,7 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
       const blob = await r.blob()
       const res = await guardarArchivoEnDescargas(
         blob,
-        nombreStem(c.titulo, nombreBonitoStem(p.nombreIngles), c.version),
+        nombreStem(c.titulo, etiquetaPista(p), c.version),
         carpetaDe(c),
       )
       if (!res.ok) throw new Error(res.error)
@@ -1809,19 +1820,29 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
                   id: 'separate_vocal',
                   emoji: '🎤',
                   titulo: 'Karaoke',
-                  detalle: 'La voz por un lado y la música por el otro — para cantar encima',
+                  detalle: 'La música sin voz para cantar encima — te llega también la voz sola',
+                  costo: '≈10 créditos',
+                },
+                {
+                  id: 'solo_voz',
+                  emoji: '🎙️',
+                  titulo: 'Solo la voz',
+                  detalle: 'La voz acapella, sin la música — te llega también el karaoke',
+                  costo: '≈10 créditos',
                 },
                 {
                   id: 'split_stem_advanced',
                   emoji: '🎸',
                   titulo: 'Un instrumento',
                   detalle: 'Solo guitarra, batería, piano… el que elijas',
+                  costo: '≈20 créditos',
                 },
                 {
                   id: 'split_stem',
                   emoji: '🍱',
                   titulo: 'Todo separado',
                   detalle: 'Hasta 12 pistas: voz, coros, batería, bajo, guitarra…',
+                  costo: '≈50 créditos',
                 },
               ] as const
             ).map((m) => (
@@ -1838,8 +1859,15 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
                     : 'border-neutral-200 hover:border-acento/40 dark:border-neutral-800'
                 }`}
               >
-                <p className="text-sm font-bold text-neutral-900 dark:text-white">
-                  {m.emoji} {m.titulo}
+                <p className="flex items-center justify-between gap-2 text-sm font-bold text-neutral-900 dark:text-white">
+                  <span className="min-w-0 truncate">
+                    {m.emoji} {m.titulo}
+                  </span>
+                  {/* 🩹 v0.22.0 — el costo de cada modo a la vista para
+                      elegir sin sorpresas (doc de sunoapi.org) */}
+                  <span className="shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-[10px] font-bold text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
+                    {m.costo}
+                  </span>
                 </p>
                 <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">{m.detalle}</p>
               </button>
@@ -1886,7 +1914,9 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
                 ? `Separar — solo ${INSTRUMENTOS_SEPARABLES.find((i) => i.id === sepInstrumento)?.nombre ?? ''}`
                 : sepTipo === 'split_stem'
                   ? 'Separar todo'
-                  : 'Separar voz y música'}
+                  : sepTipo === 'solo_voz'
+                    ? 'Separar la voz'
+                    : 'Separar voz y música'}
             </Boton>
 
             {/* las separaciones de esta canción */}
@@ -1944,7 +1974,7 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
                           {s.pistas.map((p) => (
                             <li key={p.url} className="flex items-center gap-2">
                               <span className="min-w-0 flex-1 truncate text-xs font-semibold text-neutral-700 dark:text-neutral-200">
-                                {emojiStem(p.nombreIngles)} {nombreBonitoStem(p.nombreIngles)}
+                                {p.esResto ? '➖' : emojiStem(p.nombreIngles)} {etiquetaPista(p)}
                                 {p.duracionSeg ? (
                                   <span className="ml-1 font-normal text-neutral-400">
                                     {formatoDuracion(p.duracionSeg)}
