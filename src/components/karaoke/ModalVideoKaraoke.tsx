@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Camera, Clapperboard, Loader2, Pause, Play, Square, Trash2, Video } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Camera, Clapperboard, Loader2, Pause, Pencil, Play, RotateCcw, Square, Trash2, Video } from 'lucide-react'
 import type { Cancion } from '@/types'
 import { portadaDe } from '@/types'
 import { leerAjustes, leer, guardar } from '@/core/storage/almacenamiento'
@@ -10,6 +10,7 @@ import { lineasConTiempo, estimarLineasConTiempo, type LineaLrc } from '@/core/a
 import { formatoTiempo, letraDeCancion } from '@/components/player/comunes'
 import { guardarArchivoEnDescargas } from '@/core/natives/descargas'
 import { elegirVariasImagenes, vibrar } from '@/core/natives/plataforma'
+import { alinearLetraEditada, filtrarMarcasEstructura, textoDeLineas } from '@/core/karaoke/letra'
 import { Boton } from '@/components/ui/Boton'
 import { Modal } from '@/components/ui/Modal'
 import {
@@ -17,6 +18,7 @@ import {
   FORMATOS_VIDEO,
   FUENTES_KARAOKE,
   PALETAS_KARAOKE,
+  cargarFuentesKaraoke,
   dibujarCuadro,
   elegirMimeTypeVideo,
   estiloKaraokePorDefecto,
@@ -57,9 +59,15 @@ export function ModalVideoKaraoke({
   const [buffer, setBuffer] = useState<AudioBuffer | null>(null)
   const [srcAudio, setSrcAudio] = useState<string | null>(null)
   const [duracion, setDuracion] = useState(0)
-  const [lineas, setLineas] = useState<LineaLrc[]>([])
+  /** la letra ALINEADA (con la edición de Rudy si la hizo) — antes
+   * del filtro de marcas; `lineas` (abajo) es la que se dibuja */
+  const [lineasBase, setLineasBase] = useState<LineaLrc[]>([])
   const [tipoLetra, setTipoLetra] = useState<'real' | 'estimada'>('estimada')
-  const [estilo, setEstilo] = useState<EstiloKaraoke>(estiloKaraokePorDefecto)
+  // 🎨 v0.23.0 — el estilo se recuerda entre canciones y sesiones
+  const [estilo, setEstilo] = useState<EstiloKaraoke>(() => ({
+    ...estiloKaraokePorDefecto(),
+    ...leer<Partial<EstiloKaraoke>>('estilo-karaoke', {}),
+  }))
   const [fotos, setFotos] = useState<string[]>([])
   const [imagenes, setImagenes] = useState<HTMLImageElement[]>([])
   const [portada, setPortada] = useState<HTMLImageElement | null>(null)
@@ -68,6 +76,10 @@ export function ModalVideoKaraoke({
   const [progreso, setProgreso] = useState(0)
   const [guardadoEn, setGuardadoEn] = useState<string | null>(null)
   const [tPrevia, setTPrevia] = useState(0)
+  // ✏️ v0.23.0 — editor de letra del video (solo para el video)
+  const [editandoLetra, setEditandoLetra] = useState(false)
+  const [textoEdicion, setTextoEdicion] = useState('')
+  const [hayEdicion, setHayEdicion] = useState(false)
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null)
@@ -79,8 +91,23 @@ export function ModalVideoKaraoke({
   const fuenteRef = useRef<AudioBufferSourceNode | null>(null)
   const rafRef = useRef(0)
   const despertarRef = useRef<{ release?: () => Promise<void> } | null>(null)
+  /** la letra con tiempos TAL CUAL se cargó (para «volver a la original») */
+  const originalesRef = useRef<LineaLrc[]>([])
 
   const c = cancion
+
+  // 🙈 v0.23.0 — la letra que se DIBUJA: sin marcas (Coro), (Verso
+  // 1)… si Rudy así lo quiere. La base queda intacta.
+  const lineas = useMemo(
+    () => (estilo.ocultarMarcas ? filtrarMarcasEstructura(lineasBase, true) : lineasBase),
+    [lineasBase, estilo.ocultarMarcas],
+  )
+
+  // 💾 el estilo elegido se recuerda (fuente, tamaño, animación…)
+  useEffect(() => {
+    if (!cargando && !error) guardar('estilo-karaoke', estilo)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [estilo])
 
   // ── cargar audio + letra al abrir ─────────────────────────
   useEffect(() => {
@@ -89,6 +116,8 @@ export function ModalVideoKaraoke({
     setCargando(true)
     setError(null)
     setGuardadoEn(null)
+    setEditandoLetra(false)
+    setHayEdicion(false)
     calibracionRef.current = leer(`sync-${c.id}`, 0)
     void (async () => {
       try {
@@ -97,6 +126,13 @@ export function ModalVideoKaraoke({
             'Este equipo no sabe grabar video 😕 — probá actualizar «Android System WebView» desde la Play Store y volvé a abrir el karaoke',
           )
         }
+        // 🎨 v0.23.0 — las fuentes nuevas viajan en el APK: se
+        // registran mientras prepara el audio (máx 2,5 s de espera;
+        // si alguna falla, el canvas cae a los fallbacks)
+        await Promise.race([
+          cargarFuentesKaraoke(),
+          new Promise((r) => setTimeout(r, 2500)),
+        ])
         // ── AUDIO: copia local → respaldo → URL del CDN ──
         let src: string | null = null
         if (c.audioLocal || c.respaldada) src = await leerAudio(c.id)
@@ -151,7 +187,13 @@ export function ModalVideoKaraoke({
           tipo = 'estimada'
         }
         if (!vivo) return
-        setLineas(ls)
+        // ✏️ v0.23.0 — si Rudy ya editó la letra de ESTE video, se
+        // alinea con los tiempos de la original; si no, va directa
+        originalesRef.current = ls
+        const editada = leer<string>(`karaoke-edit-${c.id}`, '')
+        const base = editada.trim() ? alinearLetraEditada(ls, editada) : ls
+        setHayEdicion(!!editada.trim())
+        setLineasBase(base)
         setTipoLetra(tipo)
         if (!ls.length) throw new Error('Esta canción no tiene letra con tiempos para seguir')
 
@@ -454,6 +496,41 @@ export function ModalVideoKaraoke({
     }
   }
 
+  // ✏️ v0.23.0 — EDITOR DE LETRA DEL VIDEO: Rudy toca «Editar»,
+  // cambia lo que quiera (sacar líneas, corregir, agregar) y al
+  // «Usar» cada línea hereda el tiempo de su original (las nuevas
+  // se interpolan). SOLO cambia el video — la letra guardada de
+  // la canción queda intacta, y se recuerda por si reabre.
+  function abrirEditor(): void {
+    vibrar('ligera')
+    setTextoEdicion(textoDeLineas(lineas))
+    setEditandoLetra(true)
+  }
+
+  function aplicarEdicion(): void {
+    if (!c) return
+    const texto = textoEdicion.trim()
+    if (!texto) {
+      volverALetraOriginal()
+      return
+    }
+    setLineasBase(alinearLetraEditada(originalesRef.current, texto))
+    guardar(`karaoke-edit-${c.id}`, texto)
+    setHayEdicion(true)
+    setEditandoLetra(false)
+    vibrar()
+    aviso('Letra del video actualizada ✏️ — los tiempos se acomodan solos', 'ok', 3500)
+  }
+
+  function volverALetraOriginal(): void {
+    if (!c) return
+    setLineasBase(originalesRef.current)
+    guardar(`karaoke-edit-${c.id}`, '')
+    setHayEdicion(false)
+    setEditandoLetra(false)
+    aviso('Volviste a la letra original de la canción', 'info', 3000)
+  }
+
   // ── render ────────────────────────────────────────────────
   return (
     <Modal abierto={!!c} onCerrar={grabando ? () => undefined : onCerrar} titulo={`🎬 Video karaoke — «${c?.titulo ?? ''}»`}>
@@ -515,10 +592,34 @@ export function ModalVideoKaraoke({
               <div className="grid grid-cols-2 gap-2">
                 {FUENTES_KARAOKE.map((f) => (
                   <Chip key={f.id} activo={estilo.fuente === f.id} onClick={() => setEstilo((s) => ({ ...s, fuente: f.id }))}>
-                    {f.emoji} {f.nombre}
-                    <span className="block text-[10px] font-normal opacity-70">{f.detalle}</span>
+                    {/* cada chip se ve CON SU PROPIA fuente (preview en vivo) */}
+                    <span style={{ fontFamily: f.familia }}>
+                      {f.emoji} {f.nombre}
+                    </span>
+                    <span className="block text-[10px] font-normal opacity-70" style={{ fontFamily: f.familia }}>
+                      {f.detalle}
+                    </span>
                   </Chip>
                 ))}
+              </div>
+            </Seccion>
+
+            {/* 🎨 v0.23.0 — tamaño de la letra */}
+            <Seccion titulo={`Tamaño de la letra — ${Math.round((estilo.tamanoTexto || 1) * 100)}%`}>
+              <div className="flex items-center gap-3 px-1">
+                <span className="text-[10px] font-black text-neutral-400">A</span>
+                <input
+                  type="range"
+                  min={0.65}
+                  max={1.6}
+                  step={0.05}
+                  value={estilo.tamanoTexto || 1}
+                  onChange={(ev) => setEstilo((s) => ({ ...s, tamanoTexto: Number(ev.target.value) }))}
+                  disabled={grabando}
+                  aria-label="Tamaño de la letra"
+                  className="h-2 flex-1 accent-acento"
+                />
+                <span className="text-2xl font-black leading-none text-neutral-500 dark:text-neutral-300">A</span>
               </div>
             </Seccion>
 
@@ -553,9 +654,68 @@ export function ModalVideoKaraoke({
                 {ANIMACIONES_KARAOKE.map((a) => (
                   <Chip key={a.id} activo={estilo.animacion === a.id} onClick={() => setEstilo((s) => ({ ...s, animacion: a.id }))}>
                     {a.emoji} {a.nombre}
+                    <span className="block text-[10px] font-normal opacity-70">{a.detalle}</span>
                   </Chip>
                 ))}
               </div>
+            </Seccion>
+
+            {/* ✏️ v0.23.0 — LETRA DEL VIDEO: marcas escondidas + editor */}
+            <Seccion titulo="Letra del video">
+              <div className="flex flex-wrap items-center gap-2">
+                <Chip
+                  activo={estilo.ocultarMarcas}
+                  onClick={() => setEstilo((s) => ({ ...s, ocultarMarcas: !s.ocultarMarcas }))}
+                >
+                  {estilo.ocultarMarcas ? '🙈 Marcas escondidas' : '👁️ Marcas visibles'}
+                  <span className="block text-[10px] font-normal opacity-70">(Coro), (Verso 1), (Outro)…</span>
+                </Chip>
+                <Boton
+                  variante="fantasma"
+                  tamano="sm"
+                  icono={<Pencil className="h-3.5 w-3.5" />}
+                  disabled={grabando}
+                  onClick={abrirEditor}
+                >
+                  Editar
+                </Boton>
+                {hayEdicion && (
+                  <Boton
+                    variante="fantasma"
+                    tamano="sm"
+                    icono={<RotateCcw className="h-3.5 w-3.5" />}
+                    disabled={grabando}
+                    onClick={volverALetraOriginal}
+                  >
+                    Original
+                  </Boton>
+                )}
+              </div>
+              {editandoLetra && (
+                <div className="mt-2 space-y-2">
+                  <textarea
+                    value={textoEdicion}
+                    onChange={(ev) => setTextoEdicion(ev.target.value)}
+                    rows={8}
+                    spellCheck={false}
+                    aria-label="Letra del video"
+                    placeholder="Cada línea es una línea de la letra…"
+                    className="w-full resize-y rounded-xl border border-neutral-200 bg-white p-3 font-mono text-xs leading-relaxed text-neutral-800 focus:border-acento focus:outline-none dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-100"
+                  />
+                  <div className="flex gap-2">
+                    <Boton tamano="sm" onClick={aplicarEdicion} disabled={!textoEdicion.trim()}>
+                      Usar esta letra
+                    </Boton>
+                    <Boton variante="fantasma" tamano="sm" onClick={() => setEditandoLetra(false)}>
+                      Cancelar
+                    </Boton>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-neutral-500 dark:text-neutral-400">
+                    Solo cambia lo que se ve en ESTE video — la letra guardada de la canción queda intacta. Cada línea
+                    mantiene su tiempo; si agregás o sacás líneas, los tiempos se acomodan solos.
+                  </p>
+                </div>
+              )}
             </Seccion>
 
             {/* fotos de fondo */}

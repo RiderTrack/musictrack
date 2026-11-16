@@ -16,6 +16,12 @@ import type { LineaLrc } from '@/core/audio/mp3'
 // elección de formato de grabación y el dibujo del cuadro. La
 // interfaz (elegir fotos, escuchar, grabar) vive en
 // components/karaoke/ModalVideoKaraoke.tsx.
+//
+// 🎨 v0.23.0 — NIVEL 2 del estudio (pedido de Rudy): 16 fuentes
+// (11 NUEVAS incluidas en el APK — así se ven igual en cualquier
+// celular), control de TAMAÑO de la letra, 4 animaciones nuevas
+// (Deslizar, Rebote, Neón y Máquina de escribir) y el filtro de
+// marcas de estructura (letra.ts). Cero créditos, todo local.
 // ═══════════════════════════════════════════════════════════
 
 // ── catálogos que elige el usuario ──────────────────────────
@@ -69,7 +75,23 @@ export const FORMATOS_VIDEO: FormatoVideo[] = [
   },
 ]
 
-export type IdFuenteKaraoke = 'moderna' | 'clasica' | 'condensada' | 'maquina' | 'manuscrita'
+export type IdFuenteKaraoke =
+  | 'moderna'
+  | 'clasica'
+  | 'condensada'
+  | 'maquina'
+  | 'manuscrita'
+  | 'impacto'
+  | 'bebas'
+  | 'slab'
+  | 'cine'
+  | 'festiva'
+  | 'olas'
+  | 'apunte'
+  | 'marcador'
+  | 'croquis'
+  | 'comics'
+  | 'futuro'
 
 export interface FuenteKaraoke {
   id: IdFuenteKaraoke
@@ -79,6 +101,9 @@ export interface FuenteKaraoke {
   /** pila CSS para el canvas (con fallbacks de Android) */
   familia: string
   peso: string
+  /** 🎨 v0.23.0 — archivo TTF incluido EN el APK (public/fuentes);
+   * las que no lo tienen usan las del sistema. */
+  archivo?: string
 }
 
 export const FUENTES_KARAOKE: FuenteKaraoke[] = [
@@ -91,6 +116,24 @@ export const FUENTES_KARAOKE: FuenteKaraoke[] = [
     peso: '800',
   },
   {
+    id: 'impacto',
+    emoji: '🎯',
+    nombre: 'Impacto',
+    detalle: 'gigante y potente — estilo videoclip',
+    familia: '"Anton", Impact, "Arial Black", sans-serif',
+    peso: '400',
+    archivo: 'anton.ttf',
+  },
+  {
+    id: 'bebas',
+    emoji: '🗞️',
+    nombre: 'Bebas',
+    detalle: 'angosta y alta — pega con todo',
+    familia: '"Bebas Neue", "Roboto Condensed", sans-serif',
+    peso: '400',
+    archivo: 'bebas.ttf',
+  },
+  {
     id: 'clasica',
     emoji: '📜',
     nombre: 'Clásica',
@@ -99,12 +142,93 @@ export const FUENTES_KARAOKE: FuenteKaraoke[] = [
     peso: '700',
   },
   {
+    id: 'cine',
+    emoji: '🎬',
+    nombre: 'Cine',
+    detalle: 'mayúsculas de película épica',
+    familia: '"Cinzel", Georgia, serif',
+    peso: '700',
+    archivo: 'cinzel.ttf',
+  },
+  {
+    id: 'slab',
+    emoji: '🧱',
+    nombre: 'Slab',
+    detalle: 'serifas gordas — estilo cartel viejo',
+    familia: '"Alfa Slab One", "Rockwell", serif',
+    peso: '400',
+    archivo: 'alfaslab.ttf',
+  },
+  {
     id: 'condensada',
     emoji: '🎒',
     nombre: 'Condensada',
     detalle: 'angosta — entra mucha letra por línea',
     familia: '"Roboto Condensed", "Arial Narrow", sans-serif-condensed',
     peso: '800',
+  },
+  {
+    id: 'festiva',
+    emoji: '🦞',
+    nombre: 'Festiva',
+    detalle: 'redondeada con onda — estilo retro',
+    familia: '"Lobster", cursive',
+    peso: '400',
+    archivo: 'lobster.ttf',
+  },
+  {
+    id: 'olas',
+    emoji: '🌴',
+    nombre: 'Olas',
+    detalle: 'relajada, como firma de verano',
+    familia: '"Pacifico", cursive',
+    peso: '400',
+    archivo: 'pacifico.ttf',
+  },
+  {
+    id: 'apunte',
+    emoji: '✏️',
+    nombre: 'Apunte',
+    detalle: 'escrita a mano, fina y rápida',
+    familia: '"Caveat", cursive',
+    peso: '600',
+    archivo: 'caveat.ttf',
+  },
+  {
+    id: 'marcador',
+    emoji: '🖊️',
+    nombre: 'Marcador',
+    detalle: 'como escrita con marcador',
+    familia: '"Patrick Hand", "Segoe Print", cursive',
+    peso: '400',
+    archivo: 'marcador.ttf',
+  },
+  {
+    id: 'croquis',
+    emoji: '📐',
+    nombre: 'Croquis',
+    detalle: 'letra de arquitecto, prolija y suelta',
+    familia: '"Architects Daughter", cursive',
+    peso: '400',
+    archivo: 'croquis.ttf',
+  },
+  {
+    id: 'comics',
+    emoji: '💥',
+    nombre: 'Comics',
+    detalle: 'de historietica — ¡POW!',
+    familia: '"Bangers", "Comic Sans MS", cursive',
+    peso: '400',
+    archivo: 'bangers.ttf',
+  },
+  {
+    id: 'futuro',
+    emoji: '🚀',
+    nombre: 'Futuro',
+    detalle: 'futurista — estilo sci-fi',
+    familia: '"Orbitron", "Roboto Mono", monospace',
+    peso: '700',
+    archivo: 'orbitron.ttf',
   },
   {
     id: 'maquina',
@@ -118,7 +242,7 @@ export const FUENTES_KARAOKE: FuenteKaraoke[] = [
     id: 'manuscrita',
     emoji: '✍️',
     nombre: 'Manuscrita',
-    detalle: 'como escrita a mano (si tu equipo la tiene)',
+    detalle: 'la que tenga tu equipo (del sistema)',
     familia: '"Segoe Print", "Comic Sans MS", cursive',
     peso: '700',
   },
@@ -143,7 +267,7 @@ export const PALETAS_KARAOKE: PaletaKaraoke[] = [
   { id: 'blanco', emoji: '🤍', nombre: 'Blanco', color: '#ffffff' },
 ]
 
-export type IdAnimacionKaraoke = 'suave' | 'pop' | 'fija'
+export type IdAnimacionKaraoke = 'suave' | 'pop' | 'fija' | 'deslizar' | 'rebote' | 'neon' | 'maquina'
 
 export interface AnimacionKaraoke {
   id: IdAnimacionKaraoke
@@ -156,18 +280,34 @@ export const ANIMACIONES_KARAOKE: AnimacionKaraoke[] = [
   { id: 'suave', emoji: '🌊', nombre: 'Suave', detalle: 'cada línea llega flotando de abajo' },
   { id: 'pop', emoji: '🎈', nombre: 'Pop', detalle: 'cada línea salta al entrar y se acomoda' },
   { id: 'fija', emoji: '📌', nombre: 'Fija', detalle: 'sin movimiento — solo se enciende la palabra' },
+  { id: 'deslizar', emoji: '↗️', nombre: 'Deslizar', detalle: 'la línea entra deslizándose del costado' },
+  { id: 'rebote', emoji: '🏀', nombre: 'Rebote', detalle: 'la línea cae y rebota antes de quedarse' },
+  { id: 'neon', emoji: '⚡', nombre: 'Neón', detalle: 'la palabra cantada brilla pulsando' },
+  { id: 'maquina', emoji: '⌨️', nombre: 'Máquina', detalle: 'las palabras aparecen justo cuando se cantan' },
 ]
 
-/** Las 4 decisiones de estilo del video, juntas. */
+/** Las decisiones de estilo del video, juntas. */
 export interface EstiloKaraoke {
   formato: IdFormatoVideo
   fuente: IdFuenteKaraoke
   paleta: IdPaletaKaraoke
   animacion: IdAnimacionKaraoke
+  /** 🎨 v0.23.0 — multiplicador del tamaño de la letra (0.65–1.6). */
+  tamanoTexto: number
+  /** 🎨 v0.23.0 — esconder las marcas de estructura (Coro, Verso 1…)
+   * del video — la letra guardada queda intacta. */
+  ocultarMarcas: boolean
 }
 
 export function estiloKaraokePorDefecto(): EstiloKaraoke {
-  return { formato: 'vertical', fuente: 'moderna', paleta: 'violeta', animacion: 'suave' }
+  return {
+    formato: 'vertical',
+    fuente: 'moderna',
+    paleta: 'violeta',
+    animacion: 'suave',
+    tamanoTexto: 1,
+    ocultarMarcas: true,
+  }
 }
 
 export function formatoDe(id: IdFormatoVideo): FormatoVideo {
@@ -180,6 +320,33 @@ function fuenteDe(id: IdFuenteKaraoke): FuenteKaraoke {
 
 function paletaDe(id: IdPaletaKaraoke): PaletaKaraoke {
   return PALETAS_KARAOKE.find((p) => p.id === id) ?? PALETAS_KARAOKE[0]
+}
+
+// ── 🎨 v0.23.0 — fuentes incluidas en el APK ───────────────
+
+/** Registra en el navegador las 11 fuentes que VIAJAN en el
+ * APK (public/fuentes) para que el canvas las pueda usar — las
+ * del sistema no necesitan nada. Se llama una sola vez al abrir
+ * el estudio; en equipos sin FontFace (tests, WebViews raros)
+ * no hace nada y el canvas cae a los fallbacks de cada pila. */
+let promesaFuentes: Promise<void> | null = null
+export function cargarFuentesKaraoke(): Promise<void> {
+  if (promesaFuentes) return promesaFuentes
+  const arrancar = async (): Promise<void> => {
+    if (typeof FontFace === 'undefined' || typeof document === 'undefined' || !document.fonts) return
+    // base './' del build (Pages, WebView y dev server andan igual)
+    const base = (import.meta as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? '/'
+    await Promise.allSettled(
+      FUENTES_KARAOKE.filter((f) => f.archivo).map(async (f) => {
+        const nombre = f.familia.split(',')[0].replace(/["']/g, '').trim()
+        const ff = new FontFace(nombre, `url(${base}fuentes/${f.archivo})`)
+        await ff.load()
+        document.fonts.add(ff)
+      }),
+    )
+  }
+  promesaFuentes = arrancar().catch(() => undefined)
+  return promesaFuentes
 }
 
 // ── grabación: qué sabe grabar este navegador ───────────────
@@ -506,7 +673,9 @@ function dibujarLetra(ctx: CanvasRenderingContext2D, e: EstadoCuadro): void {
   const pal = paletaDe(estilo.paleta)
   const fu = fuenteDe(estilo.fuente)
   const fmt = formatoDe(estilo.formato)
-  const tam = Math.round(W * fmt.escalaTexto)
+  // 🎨 v0.23.0 — el TAMAÑO ahora lo elige el usuario (0.65–1.6)
+  const multiplicador = estilo.tamanoTexto > 0 ? estilo.tamanoTexto : 1
+  const tam = Math.round(W * fmt.escalaTexto * multiplicador)
   const paso = Math.round(tam * 1.16)
   const yCentro = H * 0.62
   const maxAncho = W * 0.86
@@ -522,13 +691,21 @@ function dibujarLetra(ctx: CanvasRenderingContext2D, e: EstadoCuadro): void {
   // animación de entrada de la línea actual
   const desde = Math.max(0, tc - (actual.palabras?.[0]?.startS ?? actual.startS))
   let despl = 0
+  let desplX = 0
   let escala = 1
   if (estilo.animacion === 'suave') {
     despl = (1 - relajado(Math.min(1, desde / 0.45))) * (H * 0.045)
   } else if (estilo.animacion === 'pop') {
     escala = 1 + 0.14 * (1 - relajado(Math.min(1, desde / 0.4)))
+  } else if (estilo.animacion === 'deslizar') {
+    // 🎨 v0.23.0 — entra deslizándose del costado derecho
+    desplX = (1 - relajado(Math.min(1, desde / 0.5))) * (W * 0.22)
+  } else if (estilo.animacion === 'rebote') {
+    // 🎨 v0.23.0 — cae y rebota (oscilación amortiguada)
+    const x = Math.min(1, desde / 0.6)
+    despl = (1 - relajado(x)) * (H * 0.05) + Math.sin(x * Math.PI * 3) * Math.exp(-3 * x) * (H * 0.03)
   }
-  ctx.translate(W / 2, despl)
+  ctx.translate(W / 2 + desplX, despl)
   if (escala !== 1) {
     // el salto crece desde el centro de la línea, no del borde
     ctx.translate(0, yPrimera + altoBloque / 2)
@@ -552,6 +729,12 @@ function dibujarLetra(ctx: CanvasRenderingContext2D, e: EstadoCuadro): void {
     ctx.fillText(lineas[idx + 1].texto, 0, yPrimera + altoBloque + tam * 1.45)
   }
 
+  // 🎨 v0.23.0 — «Máquina»: las palabras que todavía no se cantan
+  // NO se dibujan (aparecen justo cuando les toca, como escritas
+  // al vuelo). Las líneas sin tiempo por palabra se muestran
+  // enteras (no hay con qué adivinar el corte).
+  const ocultarFuturas = estilo.animacion === 'maquina'
+
   // la línea actual, palabra por palabra: cantadas en blanco, la
   // que SUENA en el color elegido con brillo, las próximas opacas
   ctx.font = `${fu.peso} ${tam}px ${fu.familia}`
@@ -564,11 +747,16 @@ function dibujarLetra(ctx: CanvasRenderingContext2D, e: EstadoCuadro): void {
     const y = yPrimera + f * paso
     let x = -fila.ancho / 2
     for (const p of fila.palabras) {
+      if (ocultarFuturas && p.i > idxViva) continue
       if (p.i === idxViva) {
         // la que se está cantando: color elegido + brillo
         ctx.fillStyle = pal.color
         ctx.shadowColor = pal.color
-        ctx.shadowBlur = tam * 0.32
+        // 🎨 v0.23.0 — «Neón»: el brillo pulsa con la música
+        ctx.shadowBlur =
+          estilo.animacion === 'neon'
+            ? tam * (0.3 + 0.16 * (0.5 + 0.5 * Math.sin(tc * 7)))
+            : tam * 0.32
       } else {
         ctx.fillStyle = p.i >= 0 && p.i < idxViva ? '#ffffff' : 'rgba(255,255,255,0.42)'
         ctx.shadowColor = 'rgba(0,0,0,0.55)'
