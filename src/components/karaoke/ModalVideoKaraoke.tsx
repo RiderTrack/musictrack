@@ -367,7 +367,13 @@ export function ModalVideoKaraoke({
    * en tiempo real (dura lo que la canción). */
   async function grabar(): Promise<void> {
     const lienzo = canvasRef.current
-    if (!lienzo || !c || grabando || !lineas.length) return
+    if (!lienzo || !c || grabando) return
+    // 🩹 v0.23.1 — si con las marcas escondidas no queda letra,
+    // avisar en vez de quedarse mudo (antes el botón no hacía nada)
+    if (!lineas.length) {
+      aviso('Con las marcas escondidas esta letra quedó vacía — activá «Letra con marcas» o editá la letra', 'error', 5000)
+      return
+    }
     const mime = elegirMimeTypeVideo()
     if (!mime) {
       aviso('Este equipo no puede grabar video 😕', 'error', 4000)
@@ -667,8 +673,10 @@ export function ModalVideoKaraoke({
                   activo={estilo.ocultarMarcas}
                   onClick={() => setEstilo((s) => ({ ...s, ocultarMarcas: !s.ocultarMarcas }))}
                 >
-                  {estilo.ocultarMarcas ? '🙈 Marcas escondidas' : '👁️ Marcas visibles'}
-                  <span className="block text-[10px] font-normal opacity-70">(Coro), (Verso 1), (Outro)…</span>
+                  {/* 🩹 v0.23.1 — el nombre que Rudy tenía en la cabeza:
+                      «la opción para que solo se vean las letras» */}
+                  {estilo.ocultarMarcas ? '🙈 Solo la letra' : '👁️ Letra con marcas'}
+                  <span className="block text-[10px] font-normal opacity-70">todo lo que esté entre ( ) o [ ] se esconde</span>
                 </Chip>
                 <Boton
                   variante="fantasma"

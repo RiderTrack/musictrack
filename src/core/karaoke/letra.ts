@@ -1,4 +1,4 @@
-import type { LineaLrc } from '@/core/audio/mp3'
+import type { LineaLrc, PalabraLrc } from '@/core/audio/mp3'
 
 // ═══════════════════════════════════════════════════════════
 // ✏️ v0.23.0 — LETRA DEL VIDEO KARAOKE (pedido de Rudy):
@@ -7,14 +7,26 @@ import type { LineaLrc } from '@/core/audio/mp3'
 // dos herramientas para que el video muestre SOLO lo que se
 // canta:
 //   1. FILTRO DE MARCAS — las líneas que son pura marca de
-//      estructura se esconden, y las que arrancan con una marca
-//      «(Coro) Bailamos…» quedan «Bailamos…». La letra guardada
-//      de la canción NUNCA se toca: el filtro es solo para el
+//      estructura se esconden, y las que traen una marca («(Coro)
+//      Bailamos…») quedan «Bailamos…». La letra guardada de
+//      la canción NUNCA se toca: el filtro es solo para el
 //      dibujo del video.
 //   2. ALINEACIÓN DE LA LETRA EDITADA — si Rudy edita la letra
 //      del video (saca líneas, corrige typos, agrega otras),
 //      cada línea editada hereda el tiempo de su original; las
 //      nuevas se interpolan entre las vecinas.
+//
+// 🩹 v0.23.1 — el filtro se le escapaba por tres lados y las
+// marcas SEGUIAN saliendo en el video (Rudy lo reportó):
+//   · el video dibuja las PALABRAS (con su tiempo), no el texto:
+//     se limpiaba `texto` pero las `palabras` seguían trayendo
+//     el «(Coro)» → ahora se limpian las dos cosas.
+//   · las etiquetas largas ([Male Vocal - Soft and Romantic])
+//     no contaban como marca → ahora TODO lo que está envuelto
+//     de punta a punta entre (…) o […] es marca, diga lo que
+//     diga (es la guía que Rudy escribe, no se canta).
+//   · las marcas del FINAL o del medio («letra (x2)») quedaban
+//     → ahora se sacan todos los pedazos entre ( ) y [ ].
 // Módulo 100% puro (sin DOM ni storage) para testearlo fácil.
 // ═══════════════════════════════════════════════════════════
 
@@ -45,6 +57,22 @@ const MARCAS_SEGURAS: ReadonlySet<string> = new Set([
   'ad lib',
   'falsete',
   'falsetto',
+  'male vocal',
+  'female vocal',
+  'voz principal',
+  'coro de fondo',
+  'voces de fondo',
+  'dueto',
+  'duet',
+  'guitar solo',
+  'piano solo',
+  'solo de guitarra',
+  'solo de piano',
+  'hablado',
+  'spoken',
+  'rapeado',
+  'susurrado',
+  'whisper',
 ])
 
 /** Palabras que SÍ pueden ser letra («solo tú y yo»): solo valen
@@ -101,12 +129,17 @@ export function esMarcaEstructura(texto: string): boolean {
       }
     }
   }
+  // 🩹 v0.23.1 — TODO lo envuelto de punta a punta es marca,
+  // diga lo que diga y por más largo que sea: (Coro), (x2),
+  // [Male Vocal - Soft and Romantic]… es la guía que Rudy
+  // escribe para armar la canción — al video no va.
+  if (envuelta) return true
   // «Coro:» → «Coro»
   t = t.replace(/[\s:：,;·|—-]+$/u, '').trim()
   // «coro x2» / «coro (x2)» → «coro»
   t = t.replace(/[([]?\s*x\s*\d+\s*[)\]]?$/i, '').trim()
   const n = normalizar(t)
-  if (!n) return envuelta // «()» o «(x2)» sueltos: también escondemos
+  if (!n) return false
   const palabras = n.split(' ').filter((p) => !esNumeral(p) && p !== 'parte' && p !== 'pt' && p !== 'pt.')
   if (!palabras.length) return true // «2» solo… raro, pero es marca
   if (palabras.length > 3) return false
@@ -119,30 +152,122 @@ export function esMarcaEstructura(texto: string): boolean {
  * Si la línea no arranca con marca (o la marca no es marca),
  * vuelve igual (solo acomodada al costado). */
 export function quitarMarcaAlInicio(texto: string): string {
-  const parentesis = texto.match(/^\s*[(\[]([^)\]]{1,30})[)\]]\s*/)
+  // 🩹 v0.23.1 — el tope de 30 caracteres se le quedaba corto a
+  // etiquetas como «[Male Vocal - Soft and Romantic]» (32+)
+  const parentesis = texto.match(/^\s*[(\[]([^)\]]{1,60})[)\]]\s*/)
   if (parentesis && esMarcaEstructura(`(${parentesis[1].trim()})`)) {
     return texto
       .slice(parentesis[0].length)
       .replace(/^\s*[|·»-]\s*/, '')
       .trim()
   }
-  const conDospuntos = texto.match(/^\s*([^:：]{2,30})[:：]\s+(.*)$/s)
+  const conDospuntos = texto.match(/^\s*([^:：]{2,60})[:：]\s+(.*)$/s)
   if (conDospuntos && esMarcaEstructura(conDospuntos[1].trim())) {
     return conDospuntos[2].trim()
   }
   return texto.trim()
 }
 
-/** La letra lista para el video: sin líneas-marca y sin marcas al
- * inicio de las mixtas. Los tiempos van intactos (cada línea
- * conserva el suyo; las escondidas no molestan). */
+/** 🩹 v0.23.1 — le saca a una línea TODOS los pedazos que estén
+ * entre (…) o […] (anidados o no; al principio, en el medio o
+ * al final). Lo que Rudy pone entre paréntesis o corchetes es
+ * guía de estructura — al video no va. */
+export function sinFragmentosEntreMarcas(texto: string): string {
+  let t = texto
+  let cambio = true
+  while (cambio) {
+    cambio = false
+    const limpio = t
+      .replace(/\([^()]*\)/g, ' ')
+      .replace(/\[[^\][]*\]/g, ' ')
+      .replace(/\{[^{}]*\}/g, ' ')
+    if (limpio !== t) {
+      t = limpio
+      cambio = true
+    }
+  }
+  return t.replace(/\s+/g, ' ').trim()
+}
+
+/** ¿dos palabras dicen lo mismo? — sin MAYÚSCULAS, acentos ni
+ * puntuación: «(Coro),» y «coro» son gemelas. */
+function gemelas(a: string, b: string): boolean {
+  const cruda = (s: string) => normalizar(s).replace(/[^a-z0-9\s]/g, '').trim()
+  const x = cruda(a)
+  return !!x && x === cruda(b)
+}
+
+/** 🩹 v0.23.1 — las palabras-con-tiempo de una línea, dejando
+ * solo las que siguen en el texto limpio: la «(Coro)» se va con
+ * su tiempo y lo cantable queda igual (el video dibuja LAS
+ * PALABRAS — si acá quedaba una marca, era la que se veía).
+ * Si una palabra cantable no aparece (una marca se la llevó al
+ * contar), se REPONE con el tiempo de la anterior: la línea se
+ * ve entera siempre. */
+export function limpiarPalabrasDeLinea(
+  palabras: PalabraLrc[] | undefined,
+  textoLimpio: string,
+  arranque?: number,
+): PalabraLrc[] | undefined {
+  if (!palabras?.length) return palabras
+  const esperadas = textoLimpio.split(/\s+/).filter(Boolean)
+  if (!esperadas.length) return undefined
+  // apareo por subsecuencia común más larga (líneas cortas: chico)
+  const n = palabras.length
+  const m = esperadas.length
+  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0))
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) {
+      dp[i][j] = gemelas(palabras[i].texto, esperadas[j])
+        ? dp[i + 1][j + 1] + 1
+        : Math.max(dp[i + 1][j], dp[i][j + 1])
+    }
+  }
+  const parejas: (PalabraLrc | null)[] = esperadas.map(() => null)
+  let i = 0
+  let j = 0
+  let casadas = 0
+  while (i < n && j < m) {
+    if (gemelas(palabras[i].texto, esperadas[j])) {
+      parejas[j] = palabras[i]
+      casadas++
+      i++
+      j++
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) i++
+    else j++
+  }
+  if (!casadas) return undefined // nada que casar: se enciende la línea entera
+  let ultimo = arranque ?? parejas.find((p) => p)?.startS ?? palabras[0].startS
+  return esperadas.map((texto, k) => {
+    const p = parejas[k]
+    if (p) {
+      ultimo = p.startS
+      // por si la palabra venía envuelta: «(Coro)» → «Coro»
+      const limpia = p.texto.replace(/^[({\[]+/, '').replace(/[)}\]]+$/, '').trim()
+      return limpia && limpia !== p.texto ? { ...p, texto: limpia } : p
+    }
+    return { texto, startS: ultimo }
+  })
+}
+
+/** La letra lista para el video: sin líneas-marca, sin marcas
+ * pegadas a lo que se canta (principio, medio o final) y con
+ * las palabras-con-tiempo limpias también. Los tiempos van
+ * intactos (cada línea conserva el suyo; las escondidas no
+ * molestan). */
 export function filtrarMarcasEstructura(lineas: LineaLrc[], quitarPrefijos = true): LineaLrc[] {
   const listas: LineaLrc[] = []
   for (const l of lineas) {
     if (esMarcaEstructura(l.texto)) continue
-    const texto = quitarPrefijos ? quitarMarcaAlInicio(l.texto) : l.texto.trim()
+    const paso1 = quitarPrefijos ? quitarMarcaAlInicio(l.texto) : l.texto.trim()
+    const texto = quitarPrefijos ? sinFragmentosEntreMarcas(paso1) : paso1
     if (!texto) continue
-    listas.push(texto === l.texto ? l : { ...l, texto })
+    if (texto === l.texto) {
+      listas.push(l)
+      continue
+    }
+    const palabras = limpiarPalabrasDeLinea(l.palabras, texto, l.startS)
+    listas.push(palabras ? { ...l, texto, palabras } : { ...l, texto })
   }
   return listas
 }
@@ -168,7 +293,14 @@ function parecido(a: string, b: string): number {
  *   · línea nueva → tiempo interpolado entre las vecinas
  *   · siempre sale en orden, sin tiempos repetidos
  * Con esto Rudy puede editar la letra del video sin romper la
- * sincronía. */
+ * sincronía.
+ * 🩹 v0.23.1 — cada original tiene DOS caras: la cruda (con sus
+ * marcas) y la LIMPIA (sin ellas, palabras incluidas). Si Rudy
+ * editó desde «solo la letra» (el editor se llena sin marcas),
+ * sus líneas casan con la cara limpia y heredan las palabras ya
+ * limpias; si editó con las marcas a la vista, casan con la
+ * cruda. Antes la edición sin marcas no encontraba a las cortas
+ * («(Coro) Hoy» vs «Hoy») y perdían la sincronía. */
 export function alinearLetraEditada(originales: LineaLrc[], texto: string): LineaLrc[] {
   const crudas = texto
     .split(/\r?\n/)
@@ -176,30 +308,60 @@ export function alinearLetraEditada(originales: LineaLrc[], texto: string): Line
     .filter(Boolean)
   if (!crudas.length) return []
 
-  const libres = originales.map((l) => ({ l, usado: false }))
+  const pares = originales.map((l) => {
+    const [limpia] = filtrarMarcasEstructura([l], true)
+    return { cruda: l, limpia: limpia ?? null, usado: false }
+  })
   const resultado: (LineaLrc | null)[] = crudas.map(() => null)
 
-  // 1) match exacto (ignora MAYÚSCULAS, acentos y espacios de más)
+  const usar = (i: number, fuente: LineaLrc, conPalabras: boolean): void => {
+    resultado[i] = {
+      texto: crudas[i],
+      startS: fuente.startS,
+      ...(conPalabras && fuente.palabras ? { palabras: fuente.palabras } : {}),
+    }
+  }
+
+  // 1) match exacto contra la cara LIMPIA (ignora MAYÚSCULAS,
+  // acentos y espacios de más) — es el caso «edité sin marcas»
   crudas.forEach((t, i) => {
     const n = normalizar(t)
-    const hit = libres.find((o) => !o.usado && normalizar(o.l.texto) === n)
-    if (hit) {
+    const hit = pares.find((o) => !o.usado && o.limpia && normalizar(o.limpia.texto) === n)
+    if (hit?.limpia) {
       hit.usado = true
-      resultado[i] = { texto: t, startS: hit.l.startS, ...(hit.l.palabras ? { palabras: hit.l.palabras } : {}) }
+      usar(i, hit.limpia, true)
     }
   })
-
-  // 2) parecidos (typos, palabras de más) — en orden, primera libre
+  // 2) match exacto contra la cara CRUDA (editó con marcas visibles)
   crudas.forEach((t, i) => {
     if (resultado[i]) return
-    const hit = libres.find((o) => !o.usado && parecido(t, o.l.texto) >= 0.6)
+    const n = normalizar(t)
+    const hit = pares.find((o) => !o.usado && normalizar(o.cruda.texto) === n)
     if (hit) {
       hit.usado = true
-      resultado[i] = { texto: t, startS: hit.l.startS }
+      usar(i, hit.cruda, true)
+    }
+  })
+  // 3) parecidos (typos, palabras de más) — primero la limpia,
+  // después la cruda; en orden, primera libre
+  crudas.forEach((t, i) => {
+    if (resultado[i]) return
+    const hit = pares.find((o) => !o.usado && o.limpia && parecido(t, o.limpia.texto) >= 0.6)
+    if (hit?.limpia) {
+      hit.usado = true
+      usar(i, hit.limpia, false)
+    }
+  })
+  crudas.forEach((t, i) => {
+    if (resultado[i]) return
+    const hit = pares.find((o) => !o.usado && parecido(t, o.cruda.texto) >= 0.6)
+    if (hit) {
+      hit.usado = true
+      usar(i, hit.cruda, false)
     }
   })
 
-  // 3) las nuevas: tiempo interpolado entre las vecinas con tiempo
+  // 4) las nuevas: tiempo interpolado entre las vecinas con tiempo
   const tiempos = resultado.map((r) => (r ? r.startS : null))
   resultado.forEach((r, i) => {
     if (r) return
@@ -234,7 +396,7 @@ export function alinearLetraEditada(originales: LineaLrc[], texto: string): Line
     resultado[i] = { texto: crudas[i], startS: t }
   })
 
-  // 4) monotonía: nada de tiempos hacia atrás (por las dudas)
+  // 5) monotonía: nada de tiempos hacia atrás (por las dudas)
   let anterior = -1
   for (const r of resultado) {
     if (!r) continue
