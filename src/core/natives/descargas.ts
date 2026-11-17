@@ -63,16 +63,41 @@ function nombreBaseArchivo(titulo: string, version?: string): string {
   return `${limpio || 'Mi canción'}${sufijo} - MusicTrack`
 }
 
-/** Blob → base64 (sin perder bytes por UTF-8: recorre el buffer). */
-async function blobABase64(blob: Blob): Promise<string> {
-  const buffer = await blob.arrayBuffer()
-  const bytes = new Uint8Array(buffer)
-  let binario = ''
-  const TROZO = 0x8000 // 32 KB por pasada — tope de apply en móviles viejos
+/** 🩹 v0.23.2 — escribe un blob GRANDE por TROZOS: el video
+ * karaoke de una canción de 6 minutos puede pasar los 200 MB,
+ * y convertirlo entero a base64 de una sola vez (un string de
+ * 300+ MB que después viaja por el bridge de Capacitor) revienta
+ * la memoria del WebView: la app se cierra justo cuando la
+ * barra llegaba al 100% y el video no se guardaba en ninguna
+ * parte (lo sufrió Rudy). Así nunca hay más de un pedazo vivo:
+ * el primero crea el archivo (y la carpeta) con writeFile y los
+ * demás se pegan con appendFile — mismo resultado final, sin
+ * funeral de memoria. */
+async function escribirBlobPorTrozos(blob: Blob, path: string): Promise<void> {
+  const bytes = new Uint8Array(await blob.arrayBuffer())
+  const TROZO = 8 * 1024 * 1024 // 8 MB por pasada
   for (let i = 0; i < bytes.length; i += TROZO) {
-    binario += String.fromCharCode(...bytes.subarray(i, i + TROZO))
+    const pedazo = bytes.subarray(i, Math.min(bytes.length, i + TROZO))
+    let binario = ''
+    for (let j = 0; j < pedazo.length; j += 0x8000) {
+      binario += String.fromCharCode(...pedazo.subarray(j, j + 0x8000))
+    }
+    const data = btoa(binario)
+    if (i === 0) {
+      await Filesystem.writeFile({
+        path,
+        data,
+        directory: Directory.Documents,
+        recursive: true, // crea «Documentos/<carpeta>/» si no existe
+      })
+    } else {
+      await Filesystem.appendFile({ path, data, directory: Directory.Documents })
+    }
   }
-  return btoa(binario)
+  // blob de 0 bytes: igual dejar el archivo creado (vacío)
+  if (!bytes.length) {
+    await Filesystem.writeFile({ path, data: '', directory: Directory.Documents, recursive: true })
+  }
 }
 
 export interface ResultadoDescarga {
@@ -118,14 +143,11 @@ export async function guardarArchivoEnDescargas(
       } catch {
         /* en Android 10+ el permiso no aplica — seguimos derecho */
       }
-      const base64 = await blobABase64(blob)
       const path = carpetaLimpia ? `${carpetaLimpia}/${nombre}` : nombre
-      await Filesystem.writeFile({
-        path,
-        data: base64,
-        directory: Directory.Documents,
-        recursive: true, // crea «Documentos/<carpeta>/» si no existe
-      })
+      // 🩹 v0.23.2 — por TROZOS: los archivos chicos (MP3, PDF)
+      // son un solo trozo y quedan igual que siempre; los GRANDES
+      // (el video karaoke) ya no revientan la memoria al guardarse
+      await escribirBlobPorTrozos(blob, path)
       return {
         ok: true,
         ruta: carpetaLimpia ? `Documentos/${carpetaLimpia}/${nombre}` : `Documentos/${nombre}`,

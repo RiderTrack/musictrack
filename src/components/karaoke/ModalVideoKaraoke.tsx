@@ -10,7 +10,7 @@ import { lineasConTiempo, estimarLineasConTiempo, type LineaLrc } from '@/core/a
 import { formatoTiempo, letraDeCancion } from '@/components/player/comunes'
 import { guardarArchivoEnDescargas } from '@/core/natives/descargas'
 import { elegirVariasImagenes, vibrar } from '@/core/natives/plataforma'
-import { alinearLetraEditada, filtrarMarcasEstructura, textoDeLineas } from '@/core/karaoke/letra'
+import { alinearLetraEditada, filtrarMarcasEstructura, repararPalabrasDeLineas, textoDeLineas } from '@/core/karaoke/letra'
 import { Boton } from '@/components/ui/Boton'
 import { Modal } from '@/components/ui/Modal'
 import {
@@ -185,6 +185,19 @@ export function ModalVideoKaraoke({
         if (!ls.length && letra && dur > 10) {
           ls = estimarLineasConTiempo(letra, dur)
           tipo = 'estimada'
+        }
+        // 🩹 v0.23.2 — los cachés lrc- guardados por versiones
+        // viejos traen las marcas de Suno ([Verse 1], (Coro)…)
+        // PEGADAS a las palabras, con los tiempos corridos — era
+        // lo que hacía que la vista previa y el video mostraran
+        // corchetes aunque «Solo la letra» estuviera activado.
+        // Se repara una sola vez y el caché queda sano siempre.
+        if (ls.length) {
+          const reparadas = repararPalabrasDeLineas(ls)
+          if (reparadas !== ls) {
+            ls = reparadas
+            guardar(`lrc-${c.id}`, ls)
+          }
         }
         if (!vivo) return
         // ✏️ v0.23.0 — si Rudy ya editó la letra de ESTE video, se
@@ -410,7 +423,10 @@ export function ModalVideoKaraoke({
       const corriente = new MediaStream([...pistaVideo.getVideoTracks(), ...destino.stream.getAudioTracks()])
       const rec = new MediaRecorder(corriente, {
         mimeType: mime,
-        videoBitsPerSecond: 6_000_000,
+        // 🩹 v0.23.2 — 4,5 Mbps (antes 6): para fotos con zoom +
+        // letra se ve igual de nítido y el archivo queda 25%
+        // más liviano — menos memoria en riesgo al guardarlo
+        videoBitsPerSecond: 4_500_000,
         audioBitsPerSecond: 160_000,
       })
       grabadorRef.current = rec

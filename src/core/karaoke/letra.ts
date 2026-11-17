@@ -1,4 +1,4 @@
-import type { LineaLrc, PalabraLrc } from '@/core/audio/mp3'
+import { contarPalabrasCantables, tokensSinMarcas, type LineaLrc, type PalabraLrc } from '@/core/audio/mp3'
 
 // ═══════════════════════════════════════════════════════════
 // ✏️ v0.23.0 — LETRA DEL VIDEO KARAOKE (pedido de Rudy):
@@ -254,7 +254,15 @@ export function limpiarPalabrasDeLinea(
  * pegadas a lo que se canta (principio, medio o final) y con
  * las palabras-con-tiempo limpias también. Los tiempos van
  * intactos (cada línea conserva el suyo; las escondidas no
- * molestan). */
+ * molestan).
+ * 🩹 v0.23.2 — el atajo «el texto ya está limpio → línea tal
+ * cual» dejaba pasar las PALABRAS envenenadas: Suno devuelve
+ * las marcas ([Verse 1], (Coro)…) como palabras más, y el
+ * video dibuja las palabras → salía «[Verse 1] En la casona…»
+ * aunque el texto estuviera limpio (Rudy lo vio en la vista
+ * previa). Ahora las palabras SIEMPRE se pasan por el cedazo:
+ * las que no casan con el texto (marcas o palabras corridas)
+ * se sacan y las que faltan se reponen con el tiempo vecino. */
 export function filtrarMarcasEstructura(lineas: LineaLrc[], quitarPrefijos = true): LineaLrc[] {
   const listas: LineaLrc[] = []
   for (const l of lineas) {
@@ -263,13 +271,41 @@ export function filtrarMarcasEstructura(lineas: LineaLrc[], quitarPrefijos = tru
     const texto = quitarPrefijos ? sinFragmentosEntreMarcas(paso1) : paso1
     if (!texto) continue
     if (texto === l.texto) {
-      listas.push(l)
+      const palabras = limpiarPalabrasDeLinea(l.palabras, texto, l.startS)
+      listas.push(palabras ? { ...l, palabras } : { ...l })
       continue
     }
     const palabras = limpiarPalabrasDeLinea(l.palabras, texto, l.startS)
     listas.push(palabras ? { ...l, texto, palabras } : { ...l, texto })
   }
   return listas
+}
+
+/** 🩹 v0.23.2 — repara una letra con tiempos cuyas PALABRAS
+ * quedaron envenenadas por las marcas de Suno (los cachés lrc-
+ * guardados por versiones viejas): junta TODAS las palabras
+ * (la corriente completa, en orden), les saca los grupos-marca
+ * y las REPARTE línea por línea según cuántas palabras
+ * cantables tiene cada texto — con esto cada palabra recupera
+ * SU tiempo real de Suno, en vez del tiempo prestado del
+ * vecino. Devuelve el MISMO array si no había nada que reparar
+ * (así el caché no se reescribe al pedo). */
+export function repararPalabrasDeLineas(lineas: LineaLrc[]): LineaLrc[] {
+  const corriente: PalabraLrc[] = []
+  for (const l of lineas) {
+    if (l.palabras?.length) corriente.push(...l.palabras)
+  }
+  if (!corriente.length) return lineas // sin palabras: nada que reparar
+  const limpias = tokensSinMarcas(corriente, (p) => p.texto)
+  if (limpias.length === corriente.length) return lineas // ya sanea
+  let idx = 0
+  return lineas.map((l) => {
+    const cantables = contarPalabrasCantables(l.texto)
+    const propias = limpias.slice(idx, idx + cantables)
+    idx += cantables
+    if (!propias.length) return l.palabras?.length ? { ...l, palabras: undefined } : l
+    return { ...l, startS: propias[0].startS, palabras: propias }
+  })
 }
 
 /** El texto plano de unas líneas (para llenar el editor). */

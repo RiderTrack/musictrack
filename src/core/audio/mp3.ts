@@ -226,12 +226,53 @@ export function armarLrc(lineas: LineaLrc[], meta: { titulo: string; artista: st
   return `${partes.join('\n')}\n`
 }
 
-/** Palabras CANTABLES de una línea (las marcas [Coro] no cuentan). */
-function palabrasDeLinea(linea: string): number {
+/** Palabras CANTABLES de una línea (las marcas [Coro] y (Verso)
+ * no cuentan: nunca las canta nadie).
+ * 🩹 v0.23.2 — ahora también afuera lo que está entre ( ): si
+ * Suno las canta, las devuelve SIN paréntesis como palabras
+ * comunes — con paréntesis son guía, igual que los corchetes. */
+export function contarPalabrasCantables(linea: string): number {
   return linea
-    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/\[[^\]]*\]|\([^)]*\)/g, ' ')
     .split(/\s+/)
     .filter(Boolean).length
+}
+
+/** 🩹 v0.23.2 — la letra sincronizada de Suno puede traer las
+ * MARCAS de estructura como si fueran palabras más («[Verse»,
+ * «1]», «(Coro)»…), a veces partidas en varios pedazos. Este
+ * filtro arma cada grupo que abre con ( o [ y cierra con ) o ]
+ * (grupo corto: hasta 8 pedazos y 80 letras) y lo SACA de la
+ * corriente. ¿Por qué importa? Si no, cada marca se pega a la
+ * línea que viene y corre los tiempos de TODAS las palabras
+ * siguientes — el karaoke queda bailado y el video dibuja
+ * «[Verse 1] En la casona…» (el bug que Rudy reportó). */
+export function tokensSinMarcas<T>(tokens: T[], textoDe: (t: T) => string): T[] {
+  const limpios: T[] = []
+  for (let i = 0; i < tokens.length; i++) {
+    const t = textoDe(tokens[i]).trim()
+    if (!/^[(\[]/.test(t)) {
+      limpios.push(tokens[i])
+      continue
+    }
+    // armar el grupo hasta el pedazo que cierra
+    let j = i
+    let largo = t.length
+    let cerrado = /[)\]]$/.test(t)
+    while (!cerrado && j + 1 < tokens.length && j - i < 8 && largo < 80) {
+      j++
+      largo += textoDe(tokens[j]).trim().length + 1
+      cerrado = /[)\]]$/.test(textoDe(tokens[j]).trim())
+    }
+    if (cerrado && largo <= 80) {
+      i = j // el for le suma 1: se salta el grupo entero
+      continue
+    }
+    // no cerró (o quedó enorme): palabra cantada que arranca
+    // con ( — se queda, no sea cosa que le saquemos canto
+    limpios.push(tokens[i])
+  }
+  return limpios
 }
 
 /**
@@ -244,15 +285,20 @@ function palabrasDeLinea(linea: string): number {
  */
 export function lineasConTiempo(letra: string, palabras: PalabraConTiempo[]): LineaLrc[] {
   const out: LineaLrc[] = []
+  // 🩹 v0.23.2 — las marcas que Suno devuelve como palabras se
+  // sacan ANTES de repartir: si quedaban, la línea de abajo
+  // heredaba un «[Verse 1]» con tiempo propio y todo el resto
+  // de la canción se corria una palabra por cada marca.
+  const cantablesSuno = tokensSinMarcas(palabras, (p) => p.palabra)
   let idx = 0
   for (const linea of letra.split('\n')) {
-    const cantables = palabrasDeLinea(linea)
+    const cantables = contarPalabrasCantables(linea)
     if (!cantables) continue
-    const primera = palabras[idx]
+    const primera = cantablesSuno[idx]
     if (!primera) break // la API devolvió menos palabras: hasta acá
     // v0.13.0 — las palabras de ESTA línea viajan con la línea:
     // el karaoke las enciende una por una mientras se cantan.
-    const propias: PalabraLrc[] = palabras
+    const propias: PalabraLrc[] = cantablesSuno
       .slice(idx, idx + cantables)
       .map((p) => ({ texto: p.palabra, startS: p.startS }))
     idx += cantables
@@ -296,9 +342,11 @@ export function estimarLineasConTiempo(letra: string, duracionSeg?: number): Lin
   const lineas = letra
     .split('\n')
     .map((l) => l.trim())
-    .filter((l) => l && !/^\[[^\]]*\]$/.test(l))
+    // 🩹 v0.23.2 — las líneas que son PURA marca ([Coro] o (Verso))
+    // no consumen tramo del reparto: lo cantable se reparte mejor
+    .filter((l) => l && !/^\[[^\]]*\]$/.test(l) && !/^\([^)]*\)$/.test(l))
   if (!lineas.length) return []
-  const pesos = lineas.map((l) => Math.max(2, palabrasDeLinea(l)))
+  const pesos = lineas.map((l) => Math.max(2, contarPalabrasCantables(l)))
   const total = pesos.reduce((a, b) => a + b, 0)
   const intro = Math.min(12, duracionSeg * 0.08)
   const canto = Math.max(10, duracionSeg - intro - 4)
