@@ -53,6 +53,14 @@ export function nombreStem(titulo: string, pista: string, version?: string): str
   return `${t || 'Mi canción'}${sufijo} — ${p || 'pista'} - MusicTrack.mp3`
 }
 
+/** v0.24.0 — FASE 20: nombre del .zip del PAQUETE DE LANZAMIENTO
+ * (MP3 + portada 3000×3000 + datos) que se le entrega al
+ * distribuidor: «Título — lanzamiento Spotify.zip». */
+export function nombreZipLanzamiento(titulo: string): string {
+  const t = titulo.replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, ' ').trim()
+  return `${t || 'Mi canción'} — lanzamiento Spotify.zip`
+}
+
 /** Base compartida del nombre de archivo: "Título (A) - MusicTrack". */
 function nombreBaseArchivo(titulo: string, version?: string): string {
   const limpio = titulo

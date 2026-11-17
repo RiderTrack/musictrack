@@ -9,3 +9,4 @@ key.properties
 *.apk
 .vite
 android
+public/qa.wav

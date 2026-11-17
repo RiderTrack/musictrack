@@ -68,6 +68,7 @@ import { Boton } from '@/components/ui/Boton'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { Modal } from '@/components/ui/Modal'
 import { ModalVideoKaraoke } from '@/components/karaoke/ModalVideoKaraoke'
+import { ModalPublicar } from '@/components/publicacion/ModalPublicar'
 import { useToast } from '@/components/ui/Toast'
 import { compartir, vibrar, abrirURL, copiarTexto } from '@/core/natives/plataforma'
 import {
@@ -707,6 +708,8 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
   // compartir. El estudio entero vive en su propio componente.
   // ═════════════════════════════════════════════════════════
   const [karaokeModal, setKaraokeModal] = useState<Cancion | null>(null)
+  // 🚀 v0.24.0 — FASE 20: el asistente de lanzamiento a Spotify
+  const [publicarModal, setPublicarModal] = useState<Cancion | null>(null)
 
   useEffect(() => {
     const alCambiar = (e: Event) => setSeps((e as CustomEvent<Separacion[]>).detail)
@@ -1342,6 +1345,24 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
                     className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-acento/40 bg-acento/10 px-3 py-2 text-[11px] font-bold text-acento transition-colors hover:bg-acento/20"
                   >
                     <Clapperboard className="h-3.5 w-3.5" /> Video karaoke — tus fotos + la letra avanzando
+                  </button>
+                )}
+
+                {/* 🚀 v0.24.0 — PUBLICAR EN SPOTIFY (FASE 20, pedido de
+                    Rudy): arma el paquete de lanzamiento (MP3 + portada
+                    3000×3000 + datos) y guía para subirlo por un
+                    distribuidor. Vale para canciones de Suno Y Lyria. */}
+                {c.estado === 'lista' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      vibrar()
+                      setPublicarModal(c)
+                    }}
+                    title="Armar tu paquete de lanzamiento (MP3 + portada 3000×3000 + datos) y ver cómo subirlo a Spotify"
+                    className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-acento/40 bg-acento/10 px-3 py-2 text-[11px] font-bold text-acento transition-colors hover:bg-acento/20"
+                  >
+                    <Rocket className="h-3.5 w-3.5" /> Publicar en Spotify — tu paquete de lanzamiento
                   </button>
                 )}
 
@@ -2026,6 +2047,10 @@ export function BibliotecaView({ irA }: { irA: (p: PestannaId) => void }) {
       {/* 🎬 v0.21.0 — FASE 19: ESTUDIO DE VIDEO KARAOKE (fotos,
           estilo, vista previa y grabación en la app). */}
       <ModalVideoKaraoke cancion={karaokeModal} onCerrar={() => setKaraokeModal(null)} aviso={mostrar} />
+
+      {/* 🚀 v0.24.0 — FASE 20: ASISTENTE DE LANZAMIENTO (datos +
+          portada 3000×3000 + paquete .zip + guía de distribuidores). */}
+      <ModalPublicar cancion={publicarModal} onCerrar={() => setPublicarModal(null)} aviso={mostrar} />
 
       {/* 🎵 v0.10.0 — MODAL AGREGAR A LISTA: tocás el ➕ de una
           canción y elegís la lista (o la creás al toque). */}
